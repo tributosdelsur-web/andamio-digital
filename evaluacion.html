@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Andamio Digital — Evaluación</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#0E2438; --navy-deep:#0A1B2A; --vellum:#EDF3F7; --steel:#7E8FA0;
+    --orange:#E8622C; --ochre:#D9A441; --teal:#2E9E83;
+    --line: rgba(237,243,247,0.14);
+    --display:'Space Grotesk',sans-serif; --body:'IBM Plex Sans',sans-serif; --mono:'IBM Plex Mono',monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--navy); color:var(--vellum); font-family:var(--body); min-height:100vh;}
+  .wrap{max-width:680px; margin:0 auto; padding:24px 20px 100px;}
+  header{display:flex; align-items:center; gap:14px; padding:20px 0 30px; border-bottom:1px solid var(--line); margin-bottom:30px;}
+  header img{height:46px; width:auto;}
+  header .htext{font-family:var(--mono); font-size:12px; color:var(--steel); letter-spacing:.05em; text-transform:uppercase;}
+  .card{background:var(--navy-deep); border:1px solid var(--line); border-radius:6px; padding:28px; margin-bottom:20px;}
+  h1{font-family:var(--display); font-size:1.6rem; margin-bottom:10px;}
+  h2{font-family:var(--display); font-size:1.25rem; margin-bottom:14px; color:var(--orange);}
+  p.lead{color:var(--steel); font-size:14.5px; margin-bottom:22px; line-height:1.6;}
+  .module-body{font-size:14.5px; line-height:1.7; color:var(--vellum);}
+  .module-body b{color:var(--ochre);}
+  input[type=text]{
+    width:100%; padding:14px 16px; background:var(--navy); border:1px solid var(--line);
+    border-radius:4px; color:var(--vellum); font-family:var(--body); font-size:15px; margin-bottom:18px;
+  }
+  .btn{
+    display:inline-block; background:var(--orange); color:var(--navy-deep); font-weight:600;
+    font-family:var(--mono); font-size:13px; letter-spacing:.04em; text-transform:uppercase;
+    padding:13px 26px; border-radius:4px; border:none; cursor:pointer; transition:transform .15s;
+  }
+  .btn:hover{transform:translateY(-2px);}
+  .btn:disabled{opacity:.35; cursor:not-allowed; transform:none;}
+  .btn-ghost{
+    background:none; color:var(--steel); border:1px solid var(--line); font-family:var(--mono);
+    font-size:12px; padding:10px 18px; border-radius:4px; cursor:pointer;
+  }
+  .progress-bar{height:4px; background:var(--line); border-radius:2px; margin-bottom:22px; overflow:hidden;}
+  .progress-fill{height:100%; background:var(--teal); transition:width .3s;}
+  .qnum{font-family:var(--mono); font-size:12px; color:var(--steel); text-transform:uppercase; margin-bottom:12px; display:flex; justify-content:space-between;}
+  #exam-timer{color:var(--orange); font-weight:600;}
+  #exam-timer.warn{color:#ff5c5c;}
+  .qtext{font-size:17px; margin-bottom:20px; line-height:1.5;}
+  .option{
+    display:block; width:100%; text-align:left; padding:14px 16px; margin-bottom:10px;
+    background:var(--navy); border:1px solid var(--line); border-radius:4px; color:var(--vellum);
+    font-family:var(--body); font-size:14.5px; cursor:pointer; transition:border-color .15s, background .15s;
+  }
+  .option:hover{border-color:var(--steel);}
+  .option.selected{border-color:var(--orange); background:rgba(232,98,44,.12);}
+  .nav-row{display:flex; justify-content:space-between; margin-top:22px;}
+  .result-score{font-family:var(--display); font-size:2.6rem; color:var(--teal); margin-bottom:6px;}
+  .result-item{padding:14px 0; border-top:1px solid var(--line);}
+  .result-item:first-child{border-top:none;}
+  .result-item .tag{
+    display:inline-block; font-family:var(--mono); font-size:11px; padding:3px 8px; border-radius:3px;
+    margin-bottom:8px; text-transform:uppercase;
+  }
+  .tag.ok{background:rgba(46,158,131,.2); color:var(--teal);}
+  .tag.bad{background:rgba(232,98,44,.2); color:var(--orange);}
+  .result-item p{font-size:13.5px; color:var(--steel); margin-top:6px; line-height:1.5;}
+  .admin-toggle{ position:fixed; bottom:20px; right:20px; z-index:50; }
+  .admin-list-item{ padding:14px; border:1px solid var(--line); border-radius:4px; margin-bottom:12px; cursor:pointer; }
+  .admin-list-item .row1{display:flex; justify-content:space-between; font-family:var(--mono); font-size:12px; color:var(--steel);}
+  .admin-list-item .name{font-size:15px; font-weight:600; color:var(--vellum); margin-bottom:4px;}
+  .hidden{display:none;}
+  .msg{font-family:var(--mono); font-size:12px; color:var(--steel); text-align:center; padding:30px 0;}
+  .config-warning{
+    background:rgba(232,98,44,.12); border:1px solid var(--orange); border-radius:6px;
+    padding:16px 18px; font-size:13px; color:var(--vellum); margin-bottom:20px; line-height:1.6;
+  }
+  .config-warning code{font-family:var(--mono); background:var(--navy); padding:2px 6px; border-radius:3px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg class="logo-icon-svg" viewBox="0 0 64 64" width="40" height="40" fill="none" stroke="#FFFFFF" stroke-width="3.4" stroke-linecap="round">
+      <path d="M14,58 L26,6"/><path d="M50,58 L38,6"/><path d="M19,38 L45,38"/>
+      <path d="M16,48 L48,48"/><path d="M22,26 L42,26"/><path d="M19,38 L38,26"/><path d="M45,38 L26,26"/>
+    </svg>
+    <div class="htext">Andamio Digital — Evaluación del proyecto</div>
+  </header>
+
+  <div id="config-warning" class="config-warning hidden">
+    ⚠️ Este archivo todavía no está conectado a la base de datos. Pegá tu <code>SUPABASE_URL</code> y <code>SUPABASE_ANON_KEY</code> en las primeras líneas del script (buscá <code>TU_SUPABASE_URL</code> en el código). Las respuestas se pueden completar igual, pero no se van a guardar hasta que conectes la base.
+  </div>
+
+  <div id="screen-start" class="card">
+    <h1>Conocé el proyecto</h1>
+    <p class="lead">Primero un módulo corto de lectura con los 3 pilotos y las versiones de precio. Después, un examen de 30 preguntas con 90 minutos para responderlo.</p>
+    <input type="text" id="taker-name" placeholder="Tu nombre">
+    <button class="btn" id="btn-start">Empezar la lectura →</button>
+  </div>
+
+  <div id="screen-study" class="card hidden">
+    <div class="progress-bar"><div class="progress-fill" id="study-progress-fill" style="width:0%"></div></div>
+    <div class="qnum" id="study-num">Módulo 1/5</div>
+    <h2 id="study-title"></h2>
+    <div class="module-body" id="study-body"></div>
+    <div class="nav-row">
+      <button class="btn-ghost" id="btn-study-prev">← Anterior</button>
+      <button class="btn" id="btn-study-next">Siguiente →</button>
+    </div>
+  </div>
+
+  <div id="screen-quiz" class="card hidden">
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+    <div class="qnum"><span id="qnum">Pregunta 1/30</span><span>⏱ <span id="exam-timer">90:00</span></span></div>
+    <div class="qtext" id="qtext"></div>
+    <div id="options"></div>
+    <div class="nav-row">
+      <button class="btn-ghost" id="btn-prev">← Anterior</button>
+      <button class="btn" id="btn-next" disabled>Siguiente →</button>
+    </div>
+  </div>
+
+  <div id="screen-result" class="card hidden">
+    <div class="result-score" id="result-score"></div>
+    <p class="lead" id="result-lead"></p>
+    <div id="result-list"></div>
+    <button class="btn-ghost" id="btn-restart" style="margin-top:20px;">Volver a intentar</button>
+  </div>
+
+  <div id="screen-admin" class="card hidden">
+    <h1>Panel — Respuestas registradas</h1>
+    <p class="lead">Vista de todas las respuestas guardadas en Supabase. Es información compartida con quien tenga acceso a este archivo.</p>
+    <div id="admin-list"></div>
+    <button class="btn-ghost" id="btn-admin-close" style="margin-top:10px;">Cerrar panel</button>
+  </div>
+</div>
+
+<button class="btn admin-toggle" id="btn-admin-open">Ver panel admin</button>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+// ─────────────────────────────────────────────────────────
+// PEGA ACA TUS DATOS DE SUPABASE (Project Settings -> API)
+const SUPABASE_URL = 'https://qilnzidtufdxzenwcarv.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_qUgHqEYmm37PO5WIi9o4pg_KBE11AfC';
+// ─────────────────────────────────────────────────────────
+
+const isConfigured = SUPABASE_URL !== 'TU_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'TU_SUPABASE_ANON_KEY';
+if (!isConfigured) document.getElementById('config-warning').classList.remove('hidden');
+const supabase = isConfigured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+const QUESTIONS = [{"id": "q1", "prompt": "¿Cuál es el problema central que resuelve Andamio Chino?", "options": [{"id": "a", "text": "La falta de un punto de venta (POS) en el local"}, {"id": "b", "text": "Que nadie cruza la guía de despacho, el pago en efectivo y la factura que llega después"}, {"id": "c", "text": "La necesidad de facturación electrónica ante AFIP/ARCA"}], "correct": "b", "explanation": "El dolor real es que hoy ese cruce no lo hace nadie a tiempo, y ahí se pierde plata o margen sin que nadie lo note."}, {"id": "q2", "prompt": "¿Cómo funciona la Etapa 1 de Andamio Chino, en el momento de la entrega?", "options": [{"id": "a", "text": "Se espera a la factura para cargar todo junto"}, {"id": "b", "text": "Foto de la guía → se suma al inventario y se registra el efectivo pagado, queda 'pendiente de facturar'"}, {"id": "c", "text": "El dueño tipea manualmente cada ítem en una planilla"}], "correct": "b", "explanation": "La guía y el pago en efectivo son el primer dato real — se capturan al instante, sin tipeo."}, {"id": "q3", "prompt": "¿Qué hace el sistema en la Etapa 2, cuando llega la factura?", "options": [{"id": "a", "text": "Ignora la factura, ya no hace falta"}, {"id": "b", "text": "Agrupa las guías pendientes de ese proveedor hasta que el total coincide con la factura, y avisa si hay diferencia"}, {"id": "c", "text": "Genera automáticamente la declaración de IVA"}], "correct": "b", "explanation": "Una factura suele agrupar varias guías — el 'cierre' es justamente verificar que coincidan."}, {"id": "q4", "prompt": "¿Cómo calcula Andamio Chino el precio sugerido de góndola cuando sube un costo?", "options": [{"id": "a", "text": "Aplica siempre un 20% fijo sobre cualquier producto"}, {"id": "b", "text": "Precio sugerido = costo nuevo ÷ (1 − margen objetivo que vos configuraste)"}, {"id": "c", "text": "Copia el precio del proveedor tal cual"}], "correct": "b", "explanation": "Es una fórmula simple, pero el valor está en que ya no hace falta calcularla a mano cada vez que sube un insumo."}, {"id": "q5", "prompt": "¿Qué es el 'Libro de fiado' dentro de Andamio Chino?", "options": [{"id": "a", "text": "Un módulo de facturación electrónica"}, {"id": "b", "text": "El registro de lo que los clientes de confianza le deben al comercio"}, {"id": "c", "text": "Un sistema de préstamos bancarios"}], "correct": "b", "explanation": "Es la cuenta por cobrar informal — lo que hoy suele vivir en un cuaderno de papel."}, {"id": "q6", "prompt": "¿Qué es 'Cuentas por pagar' en Andamio Chino?", "options": [{"id": "a", "text": "Lo que el comercio le debe a cada proveedor y cuándo vence"}, {"id": "b", "text": "El sueldo de los empleados"}, {"id": "c", "text": "Los impuestos municipales"}], "correct": "a", "explanation": "Es el otro lado de la balanza del fiado: no lo que te deben, sino lo que vos debés."}, {"id": "q7", "prompt": "¿Qué hace el 'Catálogo express' de Andamio Chino?", "options": [{"id": "a", "text": "Publica automáticamente en Mercado Libre"}, {"id": "b", "text": "Con un clic arma una lista de lo que hay en stock para compartir por WhatsApp con clientes o revendedores"}, {"id": "c", "text": "Genera facturas para exportación"}], "correct": "b", "explanation": "Reutiliza el mismo dato que ya se cargó al registrar la mercadería — no es trabajo extra."}, {"id": "q8", "prompt": "¿Qué NO hace Andamio Chino, aunque alguien lo pida?", "options": [{"id": "a", "text": "Registrar guías por foto"}, {"id": "b", "text": "Presentar o gestionar nada ante AFIP/ARCA — es un insumo para el comercio y su contador, no un trámite fiscal"}, {"id": "c", "text": "Calcular precio sugerido"}], "correct": "b", "explanation": "Ese límite es a propósito: reduce fricción de venta y responsabilidad legal desde el día uno."}, {"id": "q9", "prompt": "¿Cuál es el problema real que resuelve Etiqueta Visión?", "options": [{"id": "a", "text": "La falta de espacio en el depósito"}, {"id": "b", "text": "Abrir 20 cajas selladas para saber qué hay adentro toma horas y se pierden unidades en el camino"}, {"id": "c", "text": "El costo de los cartones de embalaje"}], "correct": "b", "explanation": "El dolor es tiempo perdido y mercadería que se extravía al manipular cajas abiertas."}, {"id": "q10", "prompt": "¿Cómo se genera la etiqueta QR de cada caja en Etiqueta Visión?", "options": [{"id": "a", "text": "Se escribe a mano en cada caja"}, {"id": "b", "text": "Foto a la orden de empaque/remito → el sistema divide el contenido por caja y genera un QR único para cada una"}, {"id": "c", "text": "Se compra un código QR genérico por internet"}], "correct": "b", "explanation": "El QR nace del mismo documento del proveedor, sin trabajo manual extra."}, {"id": "q11", "prompt": "¿Qué gana el comercio al escanear el QR de una caja cerrada?", "options": [{"id": "a", "text": "Nada, solo un número de seguimiento"}, {"id": "b", "text": "Ve al instante qué hay adentro (talle, color, modelo) sin cortar la cinta ni abrir la caja"}, {"id": "c", "text": "Se conecta automáticamente con la aduana"}], "correct": "b", "explanation": "Esa es la razón de ser del producto: decisión sin manipulación física."}, {"id": "q12", "prompt": "¿Etiqueta Visión toca algún dato fiscal o tributario del comercio?", "options": [{"id": "a", "text": "Sí, calcula el IVA de cada caja"}, {"id": "b", "text": "No, es inventario interno del comercio, sin integración con ningún sistema externo"}, {"id": "c", "text": "Sí, se conecta directo con ARCA"}], "correct": "b", "explanation": "Mismo principio de Fase 1 liviana que en Andamio Chino: primero resolver el dolor operativo, sin tocar lo fiscal."}, {"id": "q13", "prompt": "¿Qué problema resuelve Turnero con Rescate?", "options": [{"id": "a", "text": "La falta de un local físico"}, {"id": "b", "text": "Un turno cancelado o un no-show deja un espacio vacío que hoy nadie recupera"}, {"id": "c", "text": "El costo de los insumos de peluquería"}], "correct": "b", "explanation": "Cada hora vacía es ingreso perdido — y sin este sistema, se pierde definitivamente."}, {"id": "q14", "prompt": "¿Qué pasa cuando un cliente cancela o no responde la confirmación de Turnero con Rescate?", "options": [{"id": "a", "text": "No pasa nada, se pierde el turno"}, {"id": "b", "text": "El sistema libera el horario y avisa a varios de la lista de espera al mismo tiempo; el primero en responder se queda con el lugar"}, {"id": "c", "text": "Se le cobra una multa automática al cliente"}], "correct": "b", "explanation": "Esa es la 'rescate': recuperar el hueco en minutos, sin que el profesional tenga que hacer nada."}, {"id": "q15", "prompt": "¿Con cuánta anticipación se envía la confirmación automática del turno?", "options": [{"id": "a", "text": "2 horas antes"}, {"id": "b", "text": "1 semana antes"}, {"id": "c", "text": "Nunca se confirma, solo se recuerda"}], "correct": "a", "explanation": "Da margen suficiente para reasignar el turno si el cliente no confirma."}, {"id": "q16", "prompt": "Para consultorios médicos u odontología, ¿qué límite tiene Turnero con Rescate?", "options": [{"id": "a", "text": "Registra el motivo de la consulta"}, {"id": "b", "text": "Solo coordina nombre, teléfono, fecha y hora — nunca historia clínica ni datos médicos"}, {"id": "c", "text": "Accede a la obra social del paciente"}], "correct": "b", "explanation": "Este límite protege al paciente y es también un argumento de venta: cero exposición de datos sensibles."}, {"id": "q17", "prompt": "¿Por qué Turnero con Rescate usa la Cloud API oficial de Meta y no un conector no oficial?", "options": [{"id": "a", "text": "Porque es más barato"}, {"id": "b", "text": "Para evitar el riesgo real de que Meta banee el número de WhatsApp del cliente"}, {"id": "c", "text": "Porque la API no oficial no existe"}], "correct": "b", "explanation": "Vender algo que puede hacer perder el número de WhatsApp del negocio es un riesgo que no vale la pena correr."}, {"id": "q18", "prompt": "¿Qué diferencia a la versión 'Light' de la versión 'Pro' en cualquiera de los 3 pilotos?", "options": [{"id": "a", "text": "Light tiene menos funciones"}, {"id": "b", "text": "Pro tiene una base de datos exclusiva (no compartida) y dominio propio; Light comparte infraestructura"}, {"id": "c", "text": "No hay ninguna diferencia real"}], "correct": "b", "explanation": "La funcionalidad es la misma — lo que cambia es dónde y cómo viven los datos del cliente."}, {"id": "q19", "prompt": "¿Qué es la versión 'Medio (BYOD)'?", "options": [{"id": "a", "text": "El cliente pone su propia tablet o celular viejo, pero igual tiene instancia de datos propia"}, {"id": "b", "text": "Es lo mismo que la versión Light"}, {"id": "c", "text": "Es una versión sin soporte técnico"}], "correct": "a", "explanation": "BYOD = 'Bring Your Own Device' — mismo nivel de privacidad que Pro, pero sin que Andamio compre el hardware."}, {"id": "q20", "prompt": "¿Por qué la cuota mensual de 'Medio' y 'Pro' es la misma?", "options": [{"id": "a", "text": "Es un error de cálculo"}, {"id": "b", "text": "Porque el costo recurrente real (instancia propia + dominio) es igual sin importar quién sea dueño del aparato"}, {"id": "c", "text": "Porque Andamio siempre cobra lo mismo"}], "correct": "b", "explanation": "Lo único que cambia entre Medio y Pro es el setup inicial, según si incluye o no el costo del hardware."}, {"id": "q21", "prompt": "Ninguna de las versiones (Light, Medio, Pro) es 100% offline. ¿Por qué?", "options": [{"id": "a", "text": "Porque son mentira, en realidad sí son offline"}, {"id": "b", "text": "Porque dependen de servicios externos (lectura de fotos con IA, envío de WhatsApp) para funcionar"}, {"id": "c", "text": "Porque necesitan wifi público"}], "correct": "b", "explanation": "Es una aclaración honesta: la privacidad se garantiza en dónde vive el dato estructurado, no en una desconexión total de internet."}, {"id": "q22", "prompt": "¿Está integrado hoy WeChat con Andamio Chino?", "options": [{"id": "a", "text": "Sí, ya funciona en producción"}, {"id": "b", "text": "No — es una visión de escalamiento a futuro (Fase 2), no parte del piloto actual"}, {"id": "c", "text": "No, y nunca se va a evaluar"}], "correct": "b", "explanation": "Es técnicamente viable pero tiene costos y restricciones reales — se evalúa recién con el primer caso de éxito validado."}, {"id": "q23", "prompt": "¿Por qué el modelo de precios usa 'setup + cuota mensual' en vez de un pago único?", "options": [{"id": "a", "text": "Porque es lo único que se le ocurrió al fundador"}, {"id": "b", "text": "Porque combina pago por hitos (setup) con ingreso recurrente (cuota), igual que otros proyectos de Andamio como Compás"}, {"id": "c", "text": "Porque así es más caro para el cliente"}], "correct": "b", "explanation": "Es coherente con el resto de los proyectos de Andamio: cobrar por avance concreto, no por promesa."}, {"id": "q24", "prompt": "¿Cuál es la estrategia de difusión definida para estos 3 pilotos?", "options": [{"id": "a", "text": "Publicidad masiva en redes sociales"}, {"id": "b", "text": "Boca en boca dentro de la red directa del fundador — sin prospección fría ni cámaras/gremios por ahora"}, {"id": "c", "text": "Llamadas en frío a listas compradas"}], "correct": "b", "explanation": "Los primeros 2 casos de cada piloto se buscan dentro de contactos de confianza, no con publicidad."}, {"id": "q25", "prompt": "¿Qué reciben los primeros 2 comercios que prueban cada piloto?", "options": [{"id": "a", "text": "Nada especial"}, {"id": "b", "text": "Una semana de prueba gratis, sin costo de instalación y sin compromiso de continuar"}, {"id": "c", "text": "Un descuento del 10% de por vida"}], "correct": "b", "explanation": "El objetivo es conseguir el primer testimonio real antes de empezar a cobrar."}, {"id": "q26", "prompt": "¿Por qué 'Andamio' es un buen nombre para este proyecto?", "options": [{"id": "a", "text": "Porque suena a construcción pesada"}, {"id": "b", "text": "Porque un andamio es la estructura que sostiene mientras se construye — la misma base técnica sirve para distintos productos"}, {"id": "c", "text": "No tiene ningún significado particular"}], "correct": "b", "explanation": "La metáfora conecta con el diseño del sitio: cada piloto es una 'capa' sobre el mismo andamio técnico."}, {"id": "q27", "prompt": "¿Qué tienen en común los 3 pilotos en cuanto a interfaz?", "options": [{"id": "a", "text": "Requieren instalar una app pesada de una tienda de aplicaciones"}, {"id": "b", "text": "Se manejan por fotos, notas de voz o mensajes simples de WhatsApp — sin cambiar de sistema"}, {"id": "c", "text": "Requieren capacitación de varios días"}], "correct": "b", "explanation": "Ese 'cero fricción de adopción' es el principio de diseño detrás de toda la suite."}, {"id": "q28", "prompt": "Si alguien pregunta '¿esto reemplaza a mi contador?', ¿cuál es la respuesta correcta?", "options": [{"id": "a", "text": "Sí, ya no necesita contador"}, {"id": "b", "text": "No — Andamio deja el registro ordenado; el contador sigue siendo quien maneja el tema tributario"}, {"id": "c", "text": "Depende del plan que contrate"}], "correct": "b", "explanation": "Es un límite que se repite en los 3 pilotos: Andamio es un insumo, no una gestión."}, {"id": "q29", "prompt": "¿Qué pasa si un cliente decide dejar de usar el servicio?", "options": [{"id": "a", "text": "Pierde todos sus datos automáticamente"}, {"id": "b", "text": "Puede pedir que se exporte su información y se elimine del sistema"}, {"id": "c", "text": "Debe pagar una penalidad por 6 meses más"}], "correct": "b", "explanation": "Los datos son del comercio, no de Andamio — eso es parte del compromiso de privacidad."}, {"id": "q30", "prompt": "En una frase: ¿qué es Andamio Digital?", "options": [{"id": "a", "text": "Una agencia de marketing y publicidad en redes"}, {"id": "b", "text": "Un estudio que construye automatizaciones simples (foto, audio, QR) que resuelven un dolor operativo real y concreto de comercios chicos"}, {"id": "c", "text": "Un banco digital para pymes"}], "correct": "b", "explanation": "Ese es el resumen que debería poder repetir cualquiera que termine este cuestionario."}];
+const MODULES = [{"title": "¿Qué es Andamio Digital?", "body": "Un estudio que construye automatizaciones simples — una foto, un audio, un código QR — para resolver un problema operativo real y diario en comercios chicos. No reemplaza ningún sistema que el comercio ya use: se conecta a WhatsApp o a una pantalla simple, sin instalar nada complejo. Hoy tiene 3 pilotos en marcha, cada uno pensado para un tipo de negocio distinto."}, {"title": "Piloto 1 — Andamio Chino", "body": "<b>El problema:</b> el proveedor entrega la guía de despacho y se paga en efectivo en el momento. La factura llega después y suele agrupar varias entregas — hoy nadie cruza bien esa cadena, y el registro se pierde en un papel.<br><br><b>Cómo funciona (dos etapas):</b> al recibir la mercadería, una foto de la guía suma todo al inventario y registra el efectivo pagado. Cuando llega la factura, otra foto agrupa las guías pendientes y confirma que coincide, avisando si hay diferencia.<br><br><b>Además:</b> calcula el precio de góndola sugerido cuando sube un costo (según el margen que configuró el dueño), lleva un libro de fiado (lo que le deben al comercio) y de cuentas por pagar (lo que el comercio le debe a sus proveedores), y arma un catálogo con un clic para mandar por WhatsApp.<br><br><b>Límite importante:</b> es un insumo ordenado, no una gestión — nunca presenta ni tramita nada ante AFIP/ARCA. Eso lo resuelve el contador del comercio, no Andamio."}, {"title": "Piloto 2 — Etiqueta Visión", "body": "<b>El problema:</b> la mercadería llega en cajas selladas. Abrir 20 cajas para saber talle, color o modelo lleva horas, y en el proceso se pierden unidades sin saber dónde.<br><br><b>Cómo funciona:</b> una foto a la orden de empaque del proveedor genera una etiqueta QR única por caja. Cualquier empleado escanea con la cámara del celular y ve al instante qué hay adentro, sin abrir la caja.<br><br><b>Además:</b> con las cajas ya cargadas, arma un catálogo de venta con un clic.<br><br><b>Límite:</b> es inventario interno, sin conexión a ningún sistema externo."}, {"title": "Piloto 3 — Turnero con Rescate", "body": "<b>El problema:</b> un profesional (barbero, esteticista, etc.) no puede frenar para coordinar turnos, y un cliente que cancela o no aparece deja un espacio vacío que hoy nadie recupera.<br><br><b>Cómo funciona:</b> el cliente pide turno por WhatsApp; 2 horas antes se envía una confirmación automática. Si cancela o no responde, el sistema libera el horario y avisa a varios de la lista de espera al mismo tiempo — el primero en responder se queda con el lugar (no le avisa a uno solo y espera; tira la red más ancha para recuperar el hueco más rápido).<br><br><b>Límite importante para salud:</b> solo coordina nombre, teléfono, fecha y hora. Nunca registra información clínica ni datos médicos — eso es clave para poder vender a consultorios sin exponer nada sensible.<br><br><b>Detalle técnico:</b> usa la Cloud API oficial de Meta (WhatsApp), no un conector no oficial, para evitar el riesgo de que le baneen el número al cliente."}, {"title": "Versiones y precios", "body": "Cada piloto tiene 3 versiones, según dónde vive el dato:<br><br><b>Light</b> — el celular personal del dueño, base de datos compartida (pero aislada por permisos). Es la versión más económica.<br><b>Medio (BYOD)</b> — el cliente pone su propia tablet o celular viejo, pero con una instancia de base de datos propia y exclusiva. Misma privacidad que Pro, sin costo de hardware.<br><b>Pro</b> — Andamio entrega el dispositivo, con la misma instancia propia.<br><br>La cuota mensual de Medio y Pro es igual — lo único que cambia es si el setup inicial incluye o no el costo del hardware. Ninguna versión es 100% offline: todas dependen de servicios externos (lectura de fotos por IA, envío de WhatsApp) para funcionar. Y WeChat todavía no está integrado — es una visión de escalamiento a futuro, no parte del piloto actual."}];
+
+let takerName = '';
+let currentIndex = 0;
+let studyIndex = 0;
+let answers = {};
+let timerInterval = null;
+let timeLeftSeconds = 90 * 60;
+
+const screens = ['screen-start','screen-study','screen-quiz','screen-result','screen-admin'].map(id => document.getElementById(id));
+function show(el) { screens.forEach(s => s.classList.add('hidden')); el.classList.remove('hidden'); }
+
+// ---- START ----
+document.getElementById('btn-start').addEventListener('click', () => {
+  const nameInput = document.getElementById('taker-name');
+  takerName = nameInput.value.trim();
+  if (!takerName) { nameInput.style.borderColor = 'var(--orange)'; return; }
+  studyIndex = 0;
+  show(document.getElementById('screen-study'));
+  renderStudy();
+});
+
+// ---- STUDY ----
+function renderStudy() {
+  const m = MODULES[studyIndex];
+  document.getElementById('study-num').textContent = 'Módulo ' + (studyIndex+1) + '/' + MODULES.length;
+  document.getElementById('study-progress-fill').style.width = (studyIndex / MODULES.length * 100) + '%';
+  document.getElementById('study-title').textContent = m.title;
+  document.getElementById('study-body').innerHTML = m.body;
+  document.getElementById('btn-study-prev').style.visibility = studyIndex === 0 ? 'hidden' : 'visible';
+  document.getElementById('btn-study-next').textContent = studyIndex === MODULES.length - 1 ? 'Empezar el examen (90 min) →' : 'Siguiente →';
+}
+document.getElementById('btn-study-prev').addEventListener('click', () => { if (studyIndex>0){studyIndex--; renderStudy();} });
+document.getElementById('btn-study-next').addEventListener('click', () => {
+  if (studyIndex < MODULES.length - 1) { studyIndex++; renderStudy(); }
+  else { startExam(); }
+});
+
+// ---- EXAM ----
+function startExam() {
+  currentIndex = 0; answers = {};
+  timeLeftSeconds = 90 * 60;
+  show(document.getElementById('screen-quiz'));
+  renderQuestion();
+  startTimer();
+}
+
+function startTimer() {
+  clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    timeLeftSeconds--;
+    const m = Math.floor(timeLeftSeconds/60), s = timeLeftSeconds%60;
+    const el = document.getElementById('exam-timer');
+    el.textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+    if (timeLeftSeconds <= 300) el.classList.add('warn');
+    if (timeLeftSeconds <= 0) {
+      clearInterval(timerInterval);
+      finishQuiz(true);
+    }
+  }, 1000);
+}
+
+function renderQuestion() {
+  const q = QUESTIONS[currentIndex];
+  document.getElementById('qnum').textContent = 'Pregunta ' + (currentIndex+1) + '/' + QUESTIONS.length;
+  document.getElementById('progress-fill').style.width = ((currentIndex) / QUESTIONS.length * 100) + '%';
+  document.getElementById('qtext').textContent = q.prompt;
+  const optWrap = document.getElementById('options');
+  optWrap.innerHTML = '';
+  q.options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'option' + (answers[q.id] === opt.id ? ' selected' : '');
+    btn.textContent = opt.text;
+    btn.addEventListener('click', () => { answers[q.id] = opt.id; renderQuestion(); });
+    optWrap.appendChild(btn);
+  });
+  document.getElementById('btn-next').disabled = !answers[q.id];
+  document.getElementById('btn-next').textContent = currentIndex === QUESTIONS.length - 1 ? 'Terminar →' : 'Siguiente →';
+  document.getElementById('btn-prev').style.visibility = currentIndex === 0 ? 'hidden' : 'visible';
+}
+
+document.getElementById('btn-prev').addEventListener('click', () => { if (currentIndex>0){currentIndex--; renderQuestion();} });
+document.getElementById('btn-next').addEventListener('click', async () => {
+  if (currentIndex < QUESTIONS.length - 1) { currentIndex++; renderQuestion(); }
+  else { await finishQuiz(false); }
+});
+
+async function finishQuiz(timeUp) {
+  clearInterval(timerInterval);
+  let score = 0;
+  const detail = QUESTIONS.map(q => {
+    const selected = answers[q.id];
+    const correct = selected === q.correct;
+    if (correct) score++;
+    return { id:q.id, prompt:q.prompt, selected, isCorrect:correct, explanation:q.explanation,
+      selectedText:(q.options.find(o=>o.id===selected)||{}).text || '(sin responder)',
+      correctText:q.options.find(o=>o.id===q.correct).text };
+  });
+
+  const record = { name:takerName, score, total:QUESTIONS.length, detail, timeUp };
+
+  if (supabase) {
+    try {
+      await supabase.from('quiz_responses').insert({
+        name: record.name, score: record.score, total: record.total, detail: record.detail
+      });
+    } catch(e) { console.error('No se pudo guardar en Supabase', e); }
+  }
+
+  renderResult(record);
+}
+
+function renderResult(record) {
+  document.getElementById('result-score').textContent = record.score + ' / ' + record.total;
+  let lead = record.score >= 26 ? '¡Muy bien, ' + record.name + '! Tenés el proyecto claro.' : 'Buen intento, ' + record.name + '. Repasá las que fallaste antes de salir a explicarlo.';
+  if (record.timeUp) lead = '⏱ Se acabó el tiempo. ' + lead;
+  document.getElementById('result-lead').textContent = lead;
+  const listWrap = document.getElementById('result-list');
+  listWrap.innerHTML = '';
+  const wrong = record.detail.filter(d => !d.isCorrect);
+  wrong.forEach(d => {
+    const div = document.createElement('div');
+    div.className = 'result-item';
+    div.innerHTML = '<span class="tag bad">Para repasar</span><div style="font-size:14px;">' + d.prompt + '</div>' +
+      '<p><b>Tu respuesta:</b> ' + d.selectedText + '<br><b>Correcta:</b> ' + d.correctText + '<br>' + d.explanation + '</p>';
+    listWrap.appendChild(div);
+  });
+  if (wrong.length === 0) listWrap.innerHTML = '<p class="msg">Todas correctas. 🎉</p>';
+  show(document.getElementById('screen-result'));
+}
+
+document.getElementById('btn-restart').addEventListener('click', () => {
+  show(document.getElementById('screen-start'));
+  document.getElementById('taker-name').value = '';
+});
+
+// ---- ADMIN ----
+document.getElementById('btn-admin-open').addEventListener('click', async () => {
+  show(document.getElementById('screen-admin'));
+  const listEl = document.getElementById('admin-list');
+  if (!supabase) {
+    listEl.innerHTML = '<p class="msg">Conectá Supabase (ver aviso arriba) para ver las respuestas guardadas.</p>';
+    return;
+  }
+  listEl.innerHTML = '<p class="msg">Cargando respuestas…</p>';
+  try {
+    const { data, error } = await supabase.from('quiz_responses').select('*').order('created_at', { ascending:false });
+    if (error) throw error;
+    if (!data || data.length === 0) { listEl.innerHTML = '<p class="msg">Todavía nadie completó el cuestionario.</p>'; return; }
+    listEl.innerHTML = '';
+    data.forEach(rec => {
+      const div = document.createElement('div');
+      div.className = 'admin-list-item';
+      const date = new Date(rec.created_at).toLocaleString('es-AR');
+      div.innerHTML = '<div class="name">' + rec.name + '</div><div class="row1"><span>' + date + '</span><span>' + rec.score + '/' + rec.total + '</span></div>';
+      div.addEventListener('click', () => toggleDetail(div, rec));
+      listEl.appendChild(div);
+    });
+  } catch(e) {
+    listEl.innerHTML = '<p class="msg">No se pudieron cargar las respuestas. Revisá la conexión a Supabase.</p>';
+    console.error(e);
+  }
+});
+
+function toggleDetail(container, rec) {
+  const existing = container.querySelector('.detail-block');
+  if (existing) { existing.remove(); return; }
+  const block = document.createElement('div');
+  block.className = 'detail-block';
+  block.style.marginTop = '12px';
+  (rec.detail || []).forEach(d => {
+    const p = document.createElement('div');
+    p.style.padding = '8px 0'; p.style.borderTop = '1px solid var(--line)'; p.style.fontSize = '13px';
+    p.innerHTML = '<span class="tag ' + (d.isCorrect?'ok':'bad') + '">' + (d.isCorrect?'Correcta':'Incorrecta') + '</span><br>' + d.prompt + '<br><span style="color:var(--steel)">Respondió: ' + d.selectedText + '</span>';
+    block.appendChild(p);
+  });
+  container.appendChild(block);
+}
+
+document.getElementById('btn-admin-close').addEventListener('click', () => show(document.getElementById('screen-start')));
+</script>
+</body>
+</html>
