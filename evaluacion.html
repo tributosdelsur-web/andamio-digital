@@ -95,6 +95,7 @@
     <h1>Conocé el proyecto</h1>
     <p class="lead">Primero un módulo corto de lectura con los 3 pilotos y las versiones de precio. Después, un examen de 30 preguntas con 90 minutos para responderlo.</p>
     <input type="text" id="taker-name" placeholder="Tu nombre">
+    <input type="tel" id="taker-contact" placeholder="Tu WhatsApp o email (para escribirte)" style="margin-top:10px;">
     <button class="btn" id="btn-start">Empezar la lectura →</button>
   </div>
 
@@ -154,6 +155,7 @@ const QUESTIONS = [{"id": "q1", "prompt": "¿Cuál es el problema central que re
 const MODULES = [{"title": "¿Qué es Andamio Digital?", "body": "Un estudio que construye automatizaciones simples — una foto, un audio, un código QR — para resolver un problema operativo real y diario en comercios chicos. No reemplaza ningún sistema que el comercio ya use: se conecta a WhatsApp o a una pantalla simple, sin instalar nada complejo. Hoy tiene 3 pilotos en marcha, cada uno pensado para un tipo de negocio distinto."}, {"title": "Piloto 1 — Andamio Chino", "body": "<b>El problema:</b> el proveedor entrega la guía de despacho y se paga en efectivo en el momento. La factura llega después y suele agrupar varias entregas — hoy nadie cruza bien esa cadena, y el registro se pierde en un papel.<br><br><b>Cómo funciona (dos etapas):</b> al recibir la mercadería, una foto de la guía suma todo al inventario y registra el efectivo pagado. Cuando llega la factura, otra foto agrupa las guías pendientes y confirma que coincide, avisando si hay diferencia.<br><br><b>Además:</b> calcula el precio de góndola sugerido cuando sube un costo (según el margen que configuró el dueño), lleva un libro de fiado (lo que le deben al comercio) y de cuentas por pagar (lo que el comercio le debe a sus proveedores), y arma un catálogo con un clic para mandar por WhatsApp.<br><br><b>Límite importante:</b> es un insumo ordenado, no una gestión — nunca presenta ni tramita nada ante AFIP/ARCA. Eso lo resuelve el contador del comercio, no Andamio."}, {"title": "Piloto 2 — Etiqueta Visión", "body": "<b>El problema:</b> la mercadería llega en cajas selladas. Abrir 20 cajas para saber talle, color o modelo lleva horas, y en el proceso se pierden unidades sin saber dónde.<br><br><b>Cómo funciona:</b> una foto a la orden de empaque del proveedor genera una etiqueta QR única por caja. Cualquier empleado escanea con la cámara del celular y ve al instante qué hay adentro, sin abrir la caja.<br><br><b>Además:</b> con las cajas ya cargadas, arma un catálogo de venta con un clic.<br><br><b>Límite:</b> es inventario interno, sin conexión a ningún sistema externo."}, {"title": "Piloto 3 — Turnero con Rescate", "body": "<b>El problema:</b> un profesional (barbero, esteticista, etc.) no puede frenar para coordinar turnos, y un cliente que cancela o no aparece deja un espacio vacío que hoy nadie recupera.<br><br><b>Cómo funciona:</b> el cliente pide turno por WhatsApp; 2 horas antes se envía una confirmación automática. Si cancela o no responde, el sistema libera el horario y avisa a varios de la lista de espera al mismo tiempo — el primero en responder se queda con el lugar (no le avisa a uno solo y espera; tira la red más ancha para recuperar el hueco más rápido).<br><br><b>Límite importante para salud:</b> solo coordina nombre, teléfono, fecha y hora. Nunca registra información clínica ni datos médicos — eso es clave para poder vender a consultorios sin exponer nada sensible.<br><br><b>Detalle técnico:</b> usa la Cloud API oficial de Meta (WhatsApp), no un conector no oficial, para evitar el riesgo de que le baneen el número al cliente."}, {"title": "Versiones y precios", "body": "Cada piloto tiene 3 versiones, según dónde vive el dato:<br><br><b>Light</b> — el celular personal del dueño, base de datos compartida (pero aislada por permisos). Es la versión más económica.<br><b>Medio (BYOD)</b> — el cliente pone su propia tablet o celular viejo, pero con una instancia de base de datos propia y exclusiva. Misma privacidad que Pro, sin costo de hardware.<br><b>Pro</b> — Andamio entrega el dispositivo, con la misma instancia propia.<br><br>La cuota mensual de Medio y Pro es igual — lo único que cambia es si el setup inicial incluye o no el costo del hardware. Ninguna versión es 100% offline: todas dependen de servicios externos (lectura de fotos por IA, envío de WhatsApp) para funcionar. Y WeChat todavía no está integrado — es una visión de escalamiento a futuro, no parte del piloto actual."}];
 
 let takerName = '';
+let takerContact = '';
 let currentIndex = 0;
 let studyIndex = 0;
 let answers = {};
@@ -167,6 +169,7 @@ function show(el) { screens.forEach(s => s.classList.add('hidden')); el.classLis
 document.getElementById('btn-start').addEventListener('click', () => {
   const nameInput = document.getElementById('taker-name');
   takerName = nameInput.value.trim();
+  takerContact = (document.getElementById('taker-contact').value || '').trim();
   if (!takerName) { nameInput.style.borderColor = 'var(--orange)'; return; }
   studyIndex = 0;
   show(document.getElementById('screen-study'));
@@ -254,9 +257,10 @@ async function finishQuiz(timeUp) {
 
   if (supabase) {
     try {
-      await supabase.from('quiz_responses').insert({
-        name: record.name, score: record.score, total: record.total, detail: record.detail
-      });
+      const fila = { name: record.name, score: record.score, total: record.total, detail: record.detail };
+      // Si la columna "contacto" todavía no existe en la base, se guarda igual sin ella
+      const { error } = await supabase.from('quiz_responses').insert({ ...fila, contacto: takerContact || null });
+      if (error) await supabase.from('quiz_responses').insert(fila);
     } catch(e) { console.error('No se pudo guardar en Supabase', e); }
   }
 

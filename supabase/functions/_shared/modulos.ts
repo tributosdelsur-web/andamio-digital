@@ -42,15 +42,20 @@ const chino: Manejador = ({ idioma, mensaje }) => {
   };
 };
 
-const etiqueta: Manejador = ({ mensaje }) => {
+const etiqueta: Manejador = ({ idioma, mensaje }) => {
   if (esMedia(mensaje.tipo)) {
     return {
-      respuesta:
-        "📦 Recibido. Pronto te devuelvo la etiqueta con QR de esta caja; la foto ya quedó guardada.",
+      respuesta: idioma === "zh"
+        ? "📦 已收到。很快会回传这个箱子的二维码标签，照片已保存。"
+        : "📦 Recibido. Pronto te devuelvo la etiqueta con QR de esta caja; la foto ya quedó guardada.",
       paso: "recibido",
     };
   }
-  return { respuesta: "Mandame una foto del contenido de la caja o un audio contando qué tiene." };
+  return {
+    respuesta: idioma === "zh"
+      ? "请发送箱内物品的照片，或用语音说明箱子里有什么。"
+      : "Mandame una foto del contenido de la caja o un audio contando qué tiene.",
+  };
 };
 
 const turnero: Manejador = () => ({

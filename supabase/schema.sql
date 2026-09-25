@@ -30,3 +30,6 @@ create policy "Cualquiera puede leer las respuestas"
 -- pública del proyecto (no hay usuarios/login). Para un equipo chico e interno como
 -- el tuyo es un nivel de exposición razonable, pero si más adelante esto crece,
 -- conviene agregar autenticación real antes del panel admin.
+
+-- Contacto del postulante (WhatsApp o email), agregado el 25/09/2026
+alter table quiz_responses add column if not exists contacto text;

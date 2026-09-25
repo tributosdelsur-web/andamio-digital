@@ -136,3 +136,17 @@ Deno.test("piloto y activo no vencen; pausado bloquea", () => {
   assertEquals(acceso("activo", fin, lejos).habilitado, true);
   assertEquals(acceso("pausado", fin, lejos).habilitado, false);
 });
+
+// --- Idiomas por módulo ---------------------------------------------------------
+import { MANEJADORES } from "../_shared/modulos.ts";
+
+Deno.test("Andamio Chino y Etiqueta Visión responden en chino", async () => {
+  const base = { comercioId: "c1", sesion: { datos: {} } };
+  const msg = { waMessageId: "w", phoneNumberId: "p", from: "549", tipo: "image", timestamp: 0, raw: {} };
+  for (const m of ["chino", "etiqueta"] as const) {
+    const zh = await MANEJADORES[m]({ ...base, idioma: "zh", mensaje: msg });
+    assert(/[一-鿿]/.test(zh.respuesta), `${m} en chino`);
+    const es = await MANEJADORES[m]({ ...base, idioma: "es", mensaje: msg });
+    assert(!/[一-鿿]/.test(es.respuesta), `${m} en español`);
+  }
+});
