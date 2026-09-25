@@ -17,6 +17,8 @@ import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import {
   descargarMedia,
   type Entrante,
+  enviarBotones,
+  enviarImagen,
   enviarTexto,
   extension,
   firmaValida,
@@ -35,7 +37,7 @@ import {
 } from "../_shared/router.ts";
 import { clienteTurnero, MANEJADORES, type SalidaModulo } from "../_shared/modulos.ts";
 import { manejarPrendas, TXT as TXT_PRENDAS } from "../_shared/prendas.ts";
-import { repoPrendas } from "../_shared/prendas_repo.ts";
+import { fichaComprador, repoPrendas } from "../_shared/prendas_repo.ts";
 
 const db: SupabaseClient = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -181,6 +183,7 @@ async function procesar(m: Entrante) {
 
   // 4) Resolver la respuesta
   let salida: SalidaModulo;
+  let fichaQr: SalidaModulo | null = null;
   let moduloSesion: Modulo | null = sesionVigente?.modulo ?? null;
   const bloqueado = usuario && accesoComercio && !accesoComercio.habilitado;
   if (bloqueado) {
@@ -195,6 +198,9 @@ async function procesar(m: Entrante) {
       await db.from("mensajes").update({ modulo: null }).eq("id", mensajeId);
       console.log("Comercio quiere seguir", usuario.comercio_id);
     }
+  } else if (!usuario && (fichaQr = await fichaComprador(db, m.texto))) {
+    // Un comprador escaneó el QR de una prenda
+    salida = fichaQr;
   } else switch (decision.accion) {
     case "modulo": {
       moduloSesion = decision.modulo;
@@ -218,7 +224,9 @@ async function procesar(m: Entrante) {
           sesion: { paso: decision.cambioModulo ? null : sesionVigente?.paso, datos: datosPrevios },
         };
         salida = decision.modulo === "etiqueta" && await modoEtiqueta(decision.comercioId) === "prendas"
-          ? await manejarPrendas(entrada, repoPrendas(db, decision.comercioId, mensajeId))
+          ? await manejarPrendas(entrada, repoPrendas(db, decision.comercioId, {
+            mensajeId, telefono: m.from, numeroBot: m.numeroBot,
+          }))
           : await MANEJADORES[decision.modulo](entrada);
       }
       break;
@@ -265,7 +273,18 @@ async function procesar(m: Entrante) {
   }
 
   // 6) Responder y registrar el saliente
-  const envio = await enviarTexto(m.phoneNumberId, m.from, salida.respuesta);
+  let tipoSaliente = salida.imagen ? "image" : salida.botones?.length ? "interactive" : "text";
+  let envio = salida.imagen
+    ? await enviarImagen(m.phoneNumberId, m.from, salida.imagen, salida.respuesta)
+    : salida.botones?.length
+    ? await enviarBotones(m.phoneNumberId, m.from, salida.respuesta, salida.botones)
+    : await enviarTexto(m.phoneNumberId, m.from, salida.respuesta);
+  if (envio.error && tipoSaliente !== "text") {
+    // Si la imagen o los botones fallan, que al menos llegue el texto (las opciones van numeradas)
+    console.error("Envío", tipoSaliente, envio.error);
+    envio = await enviarTexto(m.phoneNumberId, m.from, salida.respuesta);
+    tipoSaliente = "text";
+  }
   await db.from("mensajes").insert({
     wa_message_id: envio.waMessageId ?? null,
     direccion: "saliente",
@@ -273,7 +292,7 @@ async function procesar(m: Entrante) {
     phone_number_id: m.phoneNumberId,
     comercio_id: comercioId,
     modulo: moduloSesion,
-    tipo: "text",
+    tipo: tipoSaliente,
     texto: salida.respuesta,
     estado: envio.error ? "failed" : "sent",
     error: envio.error ?? null,

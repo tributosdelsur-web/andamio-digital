@@ -10,7 +10,8 @@ export type Idioma = "es" | "zh";
 /** Mensaje entrante ya normalizado desde el payload de Meta. */
 export interface Entrante {
   waMessageId: string;
-  phoneNumberId: string; // número del bot
+  phoneNumberId: string; // id del número del bot en Meta
+  numeroBot?: string; // número visible del bot, solo dígitos (para los QR)
   from: string; // teléfono de quien escribe, solo dígitos
   nombrePerfil?: string;
   tipo: string; // text, image, audio, document, interactive, button, ...
@@ -73,6 +74,7 @@ export function parsearWebhook(body: any): {
     for (const change of entry?.changes ?? []) {
       const v = change?.value ?? {};
       const phoneNumberId = v?.metadata?.phone_number_id ?? "";
+      const numeroBot = soloDigitos(v?.metadata?.display_phone_number) || undefined;
       const perfiles = new Map<string, string>();
       for (const c of v?.contacts ?? []) {
         if (c?.wa_id) perfiles.set(soloDigitos(c.wa_id), c?.profile?.name);
@@ -109,6 +111,7 @@ export function parsearWebhook(body: any): {
         mensajes.push({
           waMessageId: m?.id,
           phoneNumberId,
+          numeroBot,
           from,
           nombrePerfil: perfiles.get(from),
           tipo,
@@ -158,6 +161,50 @@ export async function enviarTexto(
   const j = await r.json().catch(() => ({}));
   if (!r.ok) return { error: j?.error ?? { status: r.status } };
   return { waMessageId: j?.messages?.[0]?.id };
+}
+
+async function enviar(
+  phoneNumberId: string,
+  // deno-lint-ignore no-explicit-any
+  cuerpo: Record<string, any>,
+): Promise<{ waMessageId?: string; error?: unknown }> {
+  const r = await fetch(`${GRAPH}/${phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", ...cuerpo }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) return { error: j?.error ?? { status: r.status } };
+  return { waMessageId: j?.messages?.[0]?.id };
+}
+
+/** Imagen por URL pública (ej. la etiqueta con QR), con texto al pie */
+export function enviarImagen(phoneNumberId: string, to: string, url: string, caption?: string) {
+  return enviar(phoneNumberId, {
+    to, type: "image",
+    image: { link: url, ...(caption ? { caption: caption.slice(0, 1024) } : {}) },
+  });
+}
+
+/** Hasta 3 botones de respuesta rápida. El id vuelve como texto del mensaje. */
+export function enviarBotones(
+  phoneNumberId: string,
+  to: string,
+  texto: string,
+  botones: { id: string; titulo: string }[],
+) {
+  return enviar(phoneNumberId, {
+    to, type: "interactive",
+    interactive: {
+      type: "button",
+      body: { text: texto.slice(0, 1024) },
+      action: {
+        buttons: botones.slice(0, 3).map((b) => ({
+          type: "reply", reply: { id: b.id.slice(0, 256), title: b.titulo.slice(0, 20) },
+        })),
+      },
+    },
+  });
 }
 
 /** Descarga un archivo de Meta (foto, audio) a partir de su media id. */

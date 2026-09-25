@@ -17,6 +17,10 @@ export interface EntradaModulo {
 
 export interface SalidaModulo {
   respuesta: string;
+  /** Imagen pública a enviar; la respuesta va como texto al pie */
+  imagen?: string;
+  /** Botones de respuesta rápida (máx. 3); la respuesta va como cuerpo */
+  botones?: { id: string; titulo: string }[];
   /** Nuevo paso y datos de la sesión (null = limpiar paso) */
   paso?: string | null;
   datos?: Record<string, unknown>;
