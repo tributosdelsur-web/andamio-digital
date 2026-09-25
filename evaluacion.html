@@ -44,7 +44,7 @@
   p.lead{color:var(--steel); font-size:14.5px; margin-bottom:22px; line-height:1.6;}
   .module-body{font-size:14.5px; line-height:1.7; color:var(--vellum);}
   .module-body b{color:var(--ochre);}
-  input[type=text], input[type=tel]{
+  input[type=text], input[type=tel], input[type=email], input[type=password]{
     width:100%; padding:14px 16px; background:var(--navy); border:1px solid var(--line);
     border-radius:4px; color:var(--vellum); font-family:var(--body); font-size:15px; margin-bottom:18px;
   }
@@ -144,13 +144,23 @@
 
   <div id="screen-admin" class="card hidden">
     <h1><span class="es">Panel — Respuestas registradas</span><span class="zh">管理面板 — 已提交的答卷</span></h1>
-    <p class="lead"><span class="es">Vista de todas las respuestas guardadas en Supabase. Es información compartida con quien tenga acceso a este archivo.</span><span class="zh">显示保存在 Supabase 中的所有答卷。能访问此页面的人都可以看到这些信息。</span></p>
-    <div id="admin-list"></div>
+    <div id="admin-login">
+      <p class="lead"><span class="es">Solo para el equipo de Andamio. Entrá con tu email y contraseña de administrador.</span><span class="zh">仅限安达米奥团队。请用管理员邮箱和密码登录。</span></p>
+      <input type="email" id="admin-email" autocomplete="username" data-ph-es="Email" data-ph-zh="邮箱">
+      <input type="password" id="admin-pass" autocomplete="current-password" data-ph-es="Contraseña" data-ph-zh="密码" style="margin-top:10px;">
+      <button class="btn" id="btn-admin-login" style="margin-top:14px;"><span class="es">Entrar</span><span class="zh">登录</span></button>
+      <p class="msg" id="admin-login-msg" style="padding:14px 0 0;"></p>
+    </div>
+    <div id="admin-body" class="hidden">
+      <p class="lead"><span class="es">Respuestas guardadas. Solo las ven las cuentas de administrador.</span><span class="zh">已保存的答卷，仅管理员账号可见。</span></p>
+      <div id="admin-list"></div>
+      <button class="btn-ghost" id="btn-admin-logout" style="margin-top:10px;"><span class="es">Cerrar sesión</span><span class="zh">退出登录</span></button>
+    </div>
     <button class="btn-ghost" id="btn-admin-close" style="margin-top:10px;"><span class="es">Cerrar panel</span><span class="zh">关闭面板</span></button>
   </div>
 </div>
 
-<button class="btn admin-toggle" id="btn-admin-open"><span class="es">Ver panel admin</span><span class="zh">管理面板</span></button>
+<!-- El panel admin no se muestra a los postulantes: se abre con evaluacion.html#admin -->
 
 <script type="module">
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
@@ -181,6 +191,9 @@ const UI = {
   todasBien: { es: 'Todas correctas. 🎉', zh: '全部答对。🎉' },
   cargando: { es: 'Cargando respuestas…', zh: '正在加载…' },
   nadie: { es: 'Todavía nadie completó el cuestionario.', zh: '还没有人完成问卷。' },
+  loginFalta: { es: 'Completá email y contraseña.', zh: '请填写邮箱和密码。' },
+  loginMal: { es: 'Email o contraseña incorrectos.', zh: '邮箱或密码不正确。' },
+  noAdmin: { es: 'Esta cuenta no tiene permiso de administrador.', zh: '此账号没有管理员权限。' },
   errorAdmin: { es: 'No se pudieron cargar las respuestas. Revisá la conexión a Supabase.', zh: '无法加载答卷，请检查 Supabase 连接。' },
   ok: { es: 'Correcta', zh: '正确' }, mal: { es: 'Incorrecta', zh: '错误' }, respondio: { es: 'Respondió', zh: '作答' },
 };
@@ -334,12 +347,26 @@ document.getElementById('btn-restart').addEventListener('click', () => {
   document.getElementById('taker-name').value = '';
 });
 
-// ---- PANEL ----
-document.getElementById('btn-admin-open').addEventListener('click', async () => {
+// ---- PANEL (protegido: login de Supabase + tabla admins; se abre con #admin) ----
+const adminLogin = document.getElementById('admin-login');
+const adminBody = document.getElementById('admin-body');
+const loginMsg = document.getElementById('admin-login-msg');
+
+async function abrirPanel() {
   show(document.getElementById('screen-admin'));
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) { adminLogin.classList.remove('hidden'); adminBody.classList.add('hidden'); return; }
+  adminLogin.classList.add('hidden'); adminBody.classList.remove('hidden');
+  await cargarRespuestas();
+}
+
+async function cargarRespuestas() {
   const listEl = document.getElementById('admin-list');
   listEl.innerHTML = '<p class="msg">' + t('cargando') + '</p>';
   try {
+    const { data: esAdmin, error: e1 } = await supabase.rpc('es_admin');
+    if (e1) throw e1;
+    if (!esAdmin) { listEl.innerHTML = '<p class="msg">' + t('noAdmin') + '</p>'; return; }
     const { data, error } = await supabase.from('quiz_responses').select('*').order('created_at', { ascending: false });
     if (error) throw error;
     if (!data || data.length === 0) { listEl.innerHTML = '<p class="msg">' + t('nadie') + '</p>'; return; }
@@ -359,7 +386,27 @@ document.getElementById('btn-admin-open').addEventListener('click', async () => 
     listEl.innerHTML = '<p class="msg">' + t('errorAdmin') + '</p>';
     console.error(e);
   }
+}
+
+document.getElementById('btn-admin-login').addEventListener('click', async () => {
+  const email = document.getElementById('admin-email').value.trim();
+  const password = document.getElementById('admin-pass').value;
+  if (!email || !password) { loginMsg.textContent = t('loginFalta'); return; }
+  loginMsg.textContent = t('cargando');
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  document.getElementById('admin-pass').value = '';
+  if (error) { loginMsg.textContent = t('loginMal'); return; }
+  loginMsg.textContent = '';
+  abrirPanel();
 });
+document.getElementById('btn-admin-logout').addEventListener('click', async () => {
+  await supabase.auth.signOut();
+  document.getElementById('admin-list').innerHTML = '';
+  abrirPanel();
+});
+function revisarHash() { if (location.hash === '#admin') abrirPanel(); }
+window.addEventListener('hashchange', revisarHash);
+revisarHash();
 function toggleDetail(container, rec) {
   const existing = container.querySelector('.detail-block');
   if (existing) { existing.remove(); return; }
@@ -375,7 +422,7 @@ function toggleDetail(container, rec) {
   });
   container.appendChild(block);
 }
-document.getElementById('btn-admin-close').addEventListener('click', () => show(document.getElementById('screen-start')));
+document.getElementById('btn-admin-close').addEventListener('click', () => { history.replaceState(null, '', location.pathname + location.search); show(document.getElementById('screen-start')); });
 </script>
 </body>
 </html>
