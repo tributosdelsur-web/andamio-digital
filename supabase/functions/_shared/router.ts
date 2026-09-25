@@ -83,6 +83,67 @@ export function decidir(ctx: Contexto): Decision {
   return { accion: "desconocido" };
 }
 
+// ---------------------------------------------------------------------------
+// Prueba gratuita de 7 días
+// ---------------------------------------------------------------------------
+export type EstadoComercio = "prueba" | "piloto" | "activo" | "pausado" | "baja";
+
+export interface Acceso {
+  habilitado: boolean;
+  /** Aviso a agregar a la respuesta (y registrar como enviado) */
+  aviso?: "quedan_dias" | "vencida" | "pausado";
+  diasRestantes?: number;
+}
+
+const DIA = 24 * 3600 * 1000;
+
+/**
+ * Decide si el comercio puede usar el bot y si corresponde avisarle.
+ * - prueba vigente: habilitado; avisa una vez cuando quedan 2 días o menos
+ * - prueba vencida: no habilitado; avisa (como mucho una vez por día)
+ * - pausado / baja: no habilitado
+ */
+export function acceso(
+  estado: EstadoComercio,
+  pruebaHasta: Date,
+  ahora: Date,
+  ultimoAviso?: Date | null,
+): Acceso {
+  if (estado === "piloto" || estado === "activo") return { habilitado: true };
+  if (estado === "pausado" || estado === "baja") return { habilitado: false, aviso: "pausado" };
+
+  const restante = pruebaHasta.getTime() - ahora.getTime();
+  const diasRestantes = Math.ceil(restante / DIA);
+  if (restante <= 0) {
+    const avisarDeNuevo = !ultimoAviso || ahora.getTime() - ultimoAviso.getTime() >= DIA ||
+      ultimoAviso.getTime() < pruebaHasta.getTime();
+    return { habilitado: false, aviso: avisarDeNuevo ? "vencida" : undefined, diasRestantes: 0 };
+  }
+  // Aviso de "quedan pocos días": una sola vez, dentro de los últimos 2 días
+  const yaAvisado = !!ultimoAviso && ultimoAviso.getTime() >= pruebaHasta.getTime() - 2 * DIA;
+  if (diasRestantes <= 2 && !yaAvisado) {
+    return { habilitado: true, aviso: "quedan_dias", diasRestantes };
+  }
+  return { habilitado: true, diasRestantes };
+}
+
+export function textoAviso(a: Acceso, idioma: Idioma): string | undefined {
+  switch (a.aviso) {
+    case "quedan_dias":
+      return idioma === "zh"
+        ? `⏳ 您的免费试用还剩 ${a.diasRestantes} 天。想继续使用，请回复「继续」，我们会联系您。`
+        : `⏳ Te ${a.diasRestantes === 1 ? "queda 1 día" : `quedan ${a.diasRestantes} días`} de prueba gratis. Si querés seguir usándolo, respondé «seguir» y te contactamos.`;
+    case "vencida":
+      return idioma === "zh"
+        ? "您的 7 天免费试用已结束。想继续使用，请回复「继续」，我们会联系您。您的数据已保存。"
+        : "Terminó tu prueba gratis de 7 días. Si querés seguir usándolo, respondé «seguir» y te contactamos. Tus datos quedan guardados.";
+    case "pausado":
+      return idioma === "zh"
+        ? "您的服务已暂停。如需重新启用，请联系我们。"
+        : "Tu servicio está pausado. Si querés reactivarlo, respondé «seguir» y te contactamos.";
+  }
+}
+
 export function textoMenu(idioma: Idioma, opciones: Modulo[]): string {
   const cab = idioma === "zh" ? "请选择（回复数字）：" : "¿Con qué te ayudo? Respondé con el número:";
   const lineas = opciones.map((m, i) => `${i + 1}. ${NOMBRE_MODULO[m][idioma]}`);

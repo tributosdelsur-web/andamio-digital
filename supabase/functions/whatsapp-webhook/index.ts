@@ -24,7 +24,15 @@ import {
   type Modulo,
   parsearWebhook,
 } from "../_shared/whatsapp.ts";
-import { decidir, TEXTOS, textoMenu } from "../_shared/router.ts";
+import {
+  acceso,
+  type Acceso,
+  decidir,
+  type EstadoComercio,
+  TEXTOS,
+  textoAviso,
+  textoMenu,
+} from "../_shared/router.ts";
 import { clienteTurnero, MANEJADORES, type SalidaModulo } from "../_shared/modulos.ts";
 
 const db: SupabaseClient = createClient(
@@ -105,14 +113,22 @@ async function procesar(m: Entrante) {
 
   // 2) ¿Quién escribe?
   const { data: usuario } = await db.from("usuarios")
-    .select("id, comercio_id, idioma, comercios(idioma)")
+    .select("id, comercio_id, idioma, comercios(idioma, estado, prueba_hasta, aviso_prueba_at)")
     .eq("telefono_wa", m.from).eq("activo", true).maybeSingle();
 
   let modulosActivos: Modulo[] = [];
   let idiomaUsuario: Idioma = "es";
+  let accesoComercio: Acceso | undefined;
   if (usuario) {
     // deno-lint-ignore no-explicit-any
-    idiomaUsuario = (usuario.idioma ?? (usuario as any).comercios?.idioma ?? "es") as Idioma;
+    const co = (usuario as any).comercios ?? {};
+    idiomaUsuario = (usuario.idioma ?? co.idioma ?? "es") as Idioma;
+    accesoComercio = acceso(
+      (co.estado ?? "prueba") as EstadoComercio,
+      new Date(co.prueba_hasta ?? Date.now()),
+      new Date(),
+      co.aviso_prueba_at ? new Date(co.aviso_prueba_at) : null,
+    );
     const { data: mods } = await db.from("comercio_modulos")
       .select("modulo").eq("comercio_id", usuario.comercio_id).eq("activo", true);
     modulosActivos = (mods ?? []).map((x) => x.modulo as Modulo);
@@ -164,7 +180,20 @@ async function procesar(m: Entrante) {
   // 4) Resolver la respuesta
   let salida: SalidaModulo;
   let moduloSesion: Modulo | null = sesionVigente?.modulo ?? null;
-  switch (decision.accion) {
+  const bloqueado = usuario && accesoComercio && !accesoComercio.habilitado;
+  if (bloqueado) {
+    // Prueba vencida o servicio pausado: no se procesa el módulo
+    const quiereSeguir = /^(seguir|继续)$/i.test((m.texto ?? "").trim());
+    salida = {
+      respuesta: quiereSeguir
+        ? (idiomaUsuario === "zh" ? "谢谢！我们会尽快联系您。" : "¡Gracias! Te contactamos a la brevedad.")
+        : textoAviso(accesoComercio!, idiomaUsuario) ?? TEXTOS.sinModulos[idiomaUsuario],
+    };
+    if (quiereSeguir) {
+      await db.from("mensajes").update({ modulo: null }).eq("id", mensajeId);
+      console.log("Comercio quiere seguir", usuario.comercio_id);
+    }
+  } else switch (decision.accion) {
     case "modulo": {
       moduloSesion = decision.modulo;
       const datosPrevios = decision.cambioModulo ? {} : (sesionVigente?.datos ?? {});
@@ -202,6 +231,14 @@ async function procesar(m: Entrante) {
       break;
     default:
       salida = { respuesta: TEXTOS.desconocido };
+  }
+
+  // Aviso de prueba (quedan pocos días / vencida): va junto con la respuesta
+  const aviso = accesoComercio?.aviso ? textoAviso(accesoComercio, idiomaUsuario) : undefined;
+  if (usuario && aviso) {
+    if (!bloqueado) salida.respuesta = `${salida.respuesta}\n\n${aviso}`;
+    await db.from("comercios").update({ aviso_prueba_at: new Date().toISOString() })
+      .eq("id", usuario.comercio_id);
   }
 
   // 5) Actualizar la sesión (vence 24 h después del último mensaje, como la ventana de WhatsApp)

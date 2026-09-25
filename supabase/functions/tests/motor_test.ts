@@ -99,3 +99,40 @@ Deno.test("firma del webhook", async () => {
   assert(!(await firmaValida('{"a":2}', `sha256=${hex}`, "secreto")));
   assert(!(await firmaValida(cuerpo, null, "secreto")));
 });
+
+// --- Prueba gratuita de 7 días ------------------------------------------------
+import { acceso } from "../_shared/router.ts";
+
+const D = 24 * 3600 * 1000;
+const fin = new Date("2026-10-08T12:00:00Z");
+
+Deno.test("prueba: habilitado sin aviso al principio", () => {
+  const a = acceso("prueba", fin, new Date(fin.getTime() - 6 * D));
+  assertEquals(a.habilitado, true);
+  assertEquals(a.aviso, undefined);
+});
+
+Deno.test("prueba: avisa una sola vez cuando quedan 2 días", () => {
+  const ahora = new Date(fin.getTime() - 1.5 * D);
+  const a1 = acceso("prueba", fin, ahora, null);
+  assertEquals([a1.habilitado, a1.aviso, a1.diasRestantes], [true, "quedan_dias", 2]);
+  const a2 = acceso("prueba", fin, new Date(ahora.getTime() + 3600e3), ahora);
+  assertEquals(a2.aviso, undefined);
+});
+
+Deno.test("prueba vencida: bloquea y avisa, sin repetir el mismo día", () => {
+  const venc = new Date(fin.getTime() + 3600e3);
+  const a1 = acceso("prueba", fin, venc, new Date(fin.getTime() - D)); // último aviso fue el de "quedan días"
+  assertEquals([a1.habilitado, a1.aviso], [false, "vencida"]);
+  const a2 = acceso("prueba", fin, new Date(venc.getTime() + 3600e3), venc);
+  assertEquals([a2.habilitado, a2.aviso], [false, undefined]);
+  const a3 = acceso("prueba", fin, new Date(venc.getTime() + D + 1), venc);
+  assertEquals(a3.aviso, "vencida");
+});
+
+Deno.test("piloto y activo no vencen; pausado bloquea", () => {
+  const lejos = new Date(fin.getTime() + 100 * D);
+  assertEquals(acceso("piloto", fin, lejos).habilitado, true);
+  assertEquals(acceso("activo", fin, lejos).habilitado, true);
+  assertEquals(acceso("pausado", fin, lejos).habilitado, false);
+});
