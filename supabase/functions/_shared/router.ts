@@ -8,7 +8,7 @@ export const MODULOS: Modulo[] = ["chino", "etiqueta", "turnero", "mermas"];
 
 export const NOMBRE_MODULO: Record<Modulo, Record<Idioma, string>> = {
   chino: { es: "Guías y facturas (Andamio Chino)", zh: "送货单和发票" },
-  etiqueta: { es: "Etiquetas de cajas (Etiqueta Visión)", zh: "箱子标签" },
+  etiqueta: { es: "Etiquetas y catálogo (Etiqueta Visión)", zh: "标签和商品目录" },
   turnero: { es: "Turnos (Turnero)", zh: "预约" },
   mermas: { es: "Mermas", zh: "损耗" },
 };

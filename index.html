@@ -469,21 +469,22 @@
   </div>
 
   <div class="pilot-card ochre">
-    <span class="pilot-tag">Etiqueta Visión <span style="color:var(--steel); font-family:var(--body); text-transform:none;">箱标识别</span></span>
-    <h3>Contenido de cajas cerradas, sin abrirlas</h3>
-    <p class="pilot-sub">Escaneás el QR y sabés qué hay adentro, sin cortar la cinta.<br><span style="font-style:normal; color:var(--steel);">扫描二维码即可知道箱内物品，无需拆箱</span></p>
+    <span class="pilot-tag">Etiqueta Visión <span style="color:var(--steel); font-family:var(--body); text-transform:none;">标签版</span></span>
+    <h3>Etiquetas que dicen qué hay y qué se vendió</h3>
+    <p class="pilot-sub">Dos modos: cajas cerradas para mayoristas, o prenda por prenda con catálogo para tiendas que venden por kilo.<br><span style="font-style:normal; color:var(--steel);">两种模式：批发商的整箱模式，或按公斤销售店铺的单件目录模式</span></p>
     <div class="pilot-grid">
       <div>
         <h4>El problema / 问题</h4>
         <p>La mercadería llega en cajas selladas. Abrir 20 cajas para saber talle, color o modelo lleva 3 o 4 horas, y en el medio se pierden unidades sin saber dónde.<br><span style="color:var(--steel); font-size:13px;">货物以密封箱到货。为了知道尺码、颜色或款式而拆开20个箱子需要3到4个小时，过程中还会丢失货品。</span></p>
-        <h4>Cómo funciona / 如何运作</h4>
+        <h4>Modo cajas / 整箱模式</h4>
         <p>Al armar la caja, mandás por WhatsApp una foto del remito o del contenido, o un audio («12 remeras negras talle M»). Te devolvemos una etiqueta con QR lista para imprimir. Cualquier empleado la escanea con la cámara del celular y ve al instante qué hay adentro.<br><span style="color:var(--steel); font-size:13px;">装箱时，通过WhatsApp发送送货单或箱内物品的照片，或发送语音（例如「12件黑色M码T恤」）。我们会回传可直接打印的二维码标签。任何员工用手机相机扫描即可立即看到箱内物品。</span></p>
       </div>
       <div>
-        <h4>Además incluye / 同时包含</h4>
+        <h4>Modo prenda por prenda / 单件模式</h4>
         <ul>
-          <li><b>Sin apertura del embalaje:</b> nada se toca hasta el momento de vender, cero merma por manipulación.<br><span style="color:var(--steel); font-size:12.5px;">无需拆箱：销售前不动货品，零搬运损耗。</span></li>
-          <li><b>Catálogo de venta con 1 clic</b> <em class="proximo">próximamente · 即将推出</em><b>:</b> con las cajas ya cargadas, arma un catálogo digital para compartir por WhatsApp.<br><span style="color:var(--steel); font-size:12.5px;">一键销售目录：根据已登记的箱子生成电子目录，可通过WhatsApp分享。</span></li>
+          <li><b>Al pesar y etiquetar:</b> foto de la prenda con su peso → precio calculado por kilo y código corto para la etiqueta.<br><span style="color:var(--steel); font-size:12.5px;">称重贴标时：拍下商品和重量 → 按公斤自动计算价格，并生成标签编码。</span></li>
+          <li><b>Catálogo virtual:</b> página con foto, peso y precio de lo que está en stock, en español y chino; el comprador pide por WhatsApp.<br><span style="color:var(--steel); font-size:12.5px;">网上商品目录：显示库存商品的照片、重量和价格，支持中西双语；顾客通过 WhatsApp 下单。</span></li>
+          <li><b>Al vender:</b> foto de la etiqueta → sale del stock. El catálogo es tu inventario físico.<br><span style="color:var(--steel); font-size:12.5px;">售出时：拍下标签 → 自动扣除库存。目录就是您的实物库存。</span></li>
         </ul>
       </div>
     </div>
@@ -711,6 +712,7 @@
         <option value="">Rubro · 行业</option>
         <option value="autoservicio">Autoservicio / almacén · 超市</option>
         <option value="mayorista">Mayorista · 批发</option>
+        <option value="ropa_kilo">Ropa por kilo / por pieza · 按公斤或按件卖服装</option>
         <option value="verduleria">Verdulería · 蔬果店</option>
         <option value="feria">Feria · 市集</option>
         <option value="gastronomico">Gastronómico · 餐饮</option>
@@ -721,7 +723,7 @@
       <select name="piloto">
         <option value="no_se">¿Qué te interesa? · 感兴趣的功能</option>
         <option value="chino">Guías y facturas (Andamio Chino) · 送货单和发票</option>
-        <option value="etiqueta">Cajas con QR (Etiqueta Visión) · 箱标识别</option>
+        <option value="etiqueta">Etiquetas y catálogo (Etiqueta Visión) · 标签和商品目录</option>
         <option value="turnero">Turnos (Turnero) · 预约</option>
         <option value="mermas">Mermas · 损耗</option>
       </select>
@@ -767,16 +769,14 @@
   })();
   </script>
 
-  <!-- OCULTO POR AHORA (PDFs con precios y teléfono viejos; reactivar cuando se actualicen)
-  <div style="max-width:520px; margin:0 auto; text-align:left; border-top:1px solid rgba(237,243,247,0.14); padding-top:28px;">
+    <div style="max-width:520px; margin:0 auto; text-align:left; border-top:1px solid var(--line); padding-top:28px;">
     <span class="eyebrow" style="display:block; text-align:center; margin-bottom:16px;">Material descargable</span>
     <div style="display:flex; flex-direction:column; gap:10px;">
-      <a href="docs/andamio-chino-etiqueta-bilingue.pdf" target="_blank" class="btn-ghost" style="text-align:center;">📄 Andamio Chino + Etiqueta Visión (ES/中文)</a>
+      <a href="docs/andamio-pilotos-bilingue.pdf" target="_blank" class="btn-ghost" style="text-align:center;">📄 Pilotos: Andamio Chino, Etiqueta Visión y Mermas (ES/中文)</a>
       <a href="docs/andamio-turnero-resumen-ejecutivo.pdf" target="_blank" class="btn-ghost" style="text-align:center;">📄 Turnero con Rescate — Resumen ejecutivo</a>
-      <a href="docs/andamio-condiciones-bilingue.pdf" target="_blank" class="btn-ghost" style="text-align:center;">📄 Condiciones técnicas y comerciales (ES/中文)</a>
+      <a href="docs/andamio-condiciones-bilingue.pdf" target="_blank" class="btn-ghost" style="text-align:center;">📄 Condiciones de la prueba y tus datos (ES/中文)</a>
     </div>
   </div>
-  -->
 </section>
 
 <footer>
