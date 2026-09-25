@@ -150,3 +150,12 @@ Deno.test("Andamio Chino y Etiqueta Visión responden en chino", async () => {
     assert(!/[一-鿿]/.test(es.respuesta), `${m} en español`);
   }
 });
+
+Deno.test("Turnero y Mermas también responden en chino", async () => {
+  const base = { comercioId: "c1", sesion: { datos: {} } };
+  const msg = { waMessageId: "w", phoneNumberId: "p", from: "549", tipo: "image", timestamp: 0, raw: {} };
+  for (const m of ["turnero", "mermas"] as const) {
+    const zh = await MANEJADORES[m]({ ...base, idioma: "zh", mensaje: msg });
+    assert(/[一-鿿]/.test(zh.respuesta), `${m} en chino`);
+  }
+});

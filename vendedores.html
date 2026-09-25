@@ -6,41 +6,62 @@
 <title>Sumate a Andamio Digital — Agente de Territorio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+(function(){
+  var d=document.documentElement, l=null, t=null;
+  try{ l=localStorage.getItem('andamio-idioma'); t=localStorage.getItem('andamio-tema'); }catch(e){}
+  if(!l){ l=/^zh/i.test(navigator.language||'')?'zh':'es'; }
+  if(!t){ t=(window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches)?'light':'dark'; }
+  d.setAttribute('data-lang',l); d.setAttribute('data-theme',t); d.setAttribute('lang', l==='zh'?'zh-CN':'es');
+})();
+</script>
 <style>
   :root{
     --navy:#0E2438; --navy-deep:#0A1B2A; --vellum:#EDF3F7; --steel:#7E8FA0;
-    --orange:#E8622C; --ochre:#D9A441; --teal:#2E9E83;
-    --line: rgba(237,243,247,0.14);
+    --orange:#E8622C; --ochre:#D9A441; --teal:#2E9E83; --leaf:#7BB662;
+    --line: rgba(237,243,247,0.14); --header-bg: rgba(14,36,56,.9); --on-orange:#0A1B2A;
     --display:'Space Grotesk',sans-serif; --body:'IBM Plex Sans',sans-serif; --mono:'IBM Plex Mono',monospace;
   }
+  html[data-theme="light"]{
+    --navy:#F7F5F0; --navy-deep:#EDE9E0; --vellum:#0E2438; --steel:#566676;
+    --orange:#D9531F; --ochre:#A87412; --teal:#1B7F66; --leaf:#3F7F2A;
+    --line: rgba(14,36,56,0.14); --header-bg: rgba(247,245,240,.9); --on-orange:#FFFFFF;
+  }
+  html[data-lang="es"] .zh, html[data-lang="zh"] .es{display:none !important;}
+  html[data-lang="zh"] body{font-family:'IBM Plex Sans','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC',sans-serif;}
   *{margin:0;padding:0;box-sizing:border-box;}
   body{background:var(--navy); color:var(--vellum); font-family:var(--body); line-height:1.55;}
   a{color:inherit;}
   .wrap{max-width:820px; margin:0 auto; padding:0 24px;}
   header{
-    display:flex; align-items:center; justify-content:space-between; padding:20px 24px;
-    border-bottom:1px solid var(--line); position:sticky; top:0; background:rgba(14,36,56,.9); backdrop-filter:blur(8px); z-index:10;
+    display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 24px;
+    border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--header-bg); backdrop-filter:blur(8px); z-index:10;
   }
-  header img{height:40px;}
+  header .logo{color:var(--vellum); display:flex;}
   header a.back{font-family:var(--mono); font-size:12px; color:var(--steel); text-decoration:none; text-transform:uppercase; letter-spacing:.05em;}
+  .header-right{display:flex; gap:10px; align-items:center;}
+  .toggle{font-family:var(--mono); font-size:12px; background:transparent; color:var(--steel);
+    border:1px solid var(--line); border-radius:2px; padding:7px 10px; cursor:pointer; line-height:1;}
+  .toggle b{color:var(--vellum); font-weight:600;}
   .hero{padding:70px 0 50px; text-align:center;}
   .hero span.eyebrow{font-family:var(--mono); font-size:12px; color:var(--orange); text-transform:uppercase; letter-spacing:.1em;}
   .hero h1{font-family:var(--display); font-size:clamp(2rem,4vw,2.8rem); margin:16px 0 18px; line-height:1.15;}
   .hero p{color:var(--steel); font-size:16px; max-width:52ch; margin:0 auto 30px;}
   .btn{
-    display:inline-block; background:var(--orange); color:var(--navy-deep); font-weight:600;
+    display:inline-block; background:var(--orange); color:var(--on-orange); font-weight:600;
     font-family:var(--mono); font-size:13px; letter-spacing:.04em; text-transform:uppercase;
     padding:15px 30px; border-radius:4px; text-decoration:none;
   }
   section{padding:50px 0; border-top:1px solid var(--line);}
   h2{font-family:var(--display); font-size:1.6rem; margin-bottom:20px;}
   p.lead{color:var(--steel); margin-bottom:24px; font-size:15px;}
-  .grid3{display:grid; grid-template-columns:repeat(3,1fr); gap:20px;}
+  .grid2{display:grid; grid-template-columns:repeat(2,1fr); gap:20px;}
   .pilot-mini{background:var(--navy-deep); border:1px solid var(--line); border-radius:6px; padding:22px;}
   .pilot-mini .dot{width:10px; height:10px; border-radius:50%; margin-bottom:12px;}
   .pilot-mini.orange .dot{background:var(--orange);}
   .pilot-mini.ochre .dot{background:var(--ochre);}
   .pilot-mini.teal .dot{background:var(--teal);}
+  .pilot-mini.leaf .dot{background:var(--leaf);}
   .pilot-mini h3{font-family:var(--display); font-size:1.1rem; margin-bottom:8px;}
   .pilot-mini p{font-size:13.5px; color:var(--steel);}
   table{width:100%; border-collapse:collapse; margin-top:10px;}
@@ -49,99 +70,128 @@
   td b{color:var(--vellum);}
   .example-box{background:var(--navy-deep); border:1px solid var(--teal); border-radius:6px; padding:22px; margin-top:20px;}
   .example-box .label{font-family:var(--mono); font-size:11px; color:var(--teal); text-transform:uppercase; margin-bottom:8px;}
+  .nota{font-size:13.5px; color:var(--steel); margin-top:14px;}
   ol.steps{padding-left:20px; color:var(--steel); font-size:14.5px;}
   ol.steps li{margin-bottom:12px;}
   ol.steps b{color:var(--vellum);}
   .cta-final{text-align:center; padding:60px 0 80px;}
   footer{padding:30px 24px; text-align:center; font-family:var(--mono); font-size:12px; color:var(--steel); border-top:1px solid var(--line);}
-  @media (max-width:760px){ .grid3{grid-template-columns:1fr;} }
+  @media (max-width:760px){ .grid2{grid-template-columns:1fr;} header a.back{display:none;} }
 </style>
 </head>
 <body>
 
 <header>
-  <svg class="logo-icon-svg" viewBox="0 0 64 64" width="40" height="40" fill="none" stroke="#FFFFFF" stroke-width="3.4" stroke-linecap="round">
+  <a class="logo" href="index.html" aria-label="Andamio Digital">
+    <svg viewBox="0 0 64 64" width="40" height="40" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round">
       <path d="M14,58 L26,6"/><path d="M50,58 L38,6"/><path d="M19,38 L45,38"/>
       <path d="M16,48 L48,48"/><path d="M22,26 L42,26"/><path d="M19,38 L38,26"/><path d="M45,38 L26,26"/>
     </svg>
-  <a class="back" href="index.html">← Volver al sitio</a>
+  </a>
+  <div class="header-right">
+    <a class="back" href="index.html"><span class="es">← Volver al sitio</span><span class="zh">← 返回首页</span></a>
+    <button class="toggle" id="btn-idioma" type="button" aria-label="Idioma / 语言"><span class="es"><b>ES</b> · 中文</span><span class="zh">ES · <b>中文</b></span></button>
+    <button class="toggle" id="btn-tema" type="button" aria-label="Tema claro u oscuro / 深浅色模式">◐</button>
+  </div>
 </header>
 
 <div class="hero wrap">
-  <span class="eyebrow">Agente de Territorio</span>
-  <h1>¿Querés ser parte de Andamio Digital?</h1>
-  <p>Buscamos gente de confianza para presentar 3 herramientas simples a comercios de tu zona. No hace falta saber de tecnología — hace falta caerle bien a la gente y ganas de sumar un ingreso extra.</p>
-  <a class="btn" href="evaluacion.html">Empezar la lectura y el cuestionario →</a>
-  <p style="margin-top:16px;"><a href="evaluacion.html" style="color:var(--steel); font-size:13px; text-decoration:underline;">Leé cómo funciona en unos minutos y respondé el cuestionario para sumarte →</a></p>
+  <span class="eyebrow"><span class="es">Agente de Territorio</span><span class="zh">区域代理</span></span>
+  <h1><span class="es">¿Querés ser parte de Andamio Digital?</span><span class="zh">想加入安达米奥（Andamio Digital）吗？</span></h1>
+  <p><span class="es">Buscamos gente de confianza para presentar 4 herramientas simples a comercios de tu zona. No hace falta saber de tecnología — hace falta caerle bien a la gente y ganas de sumar un ingreso extra.</span><span class="zh">我们在寻找值得信赖的人，向您所在区域的店铺介绍 4 个简单的小工具。不需要懂技术——只需要善于和人打交道，并且想增加一份额外收入。</span></p>
+  <a class="btn" href="evaluacion.html"><span class="es">Empezar la lectura y el cuestionario →</span><span class="zh">开始阅读并完成问卷 →</span></a>
 </div>
 
 <section class="wrap">
-  <h2>¿Qué es Andamio Digital?</h2>
-  <p class="lead">Un estudio que arma automatizaciones simples — una foto, un audio, un código QR — que resuelven un problema real y diario en comercios chicos: guías de despacho en papel, cajas que hay que abrir para saber qué tienen adentro, turnos que se cancelan y quedan vacíos. Todo funciona directo en WhatsApp, sin que el comercio tenga que cambiar de sistema ni aprender nada nuevo.</p>
+  <h2><span class="es">¿Qué es Andamio Digital?</span><span class="zh">安达米奥是什么？</span></h2>
+  <p class="lead"><span class="es">Un estudio que arma automatizaciones simples — una foto, un audio, un código — que resuelven un problema real y diario en comercios chicos. Todo funciona directo en WhatsApp, sin que el comercio tenga que cambiar de sistema ni aprender nada nuevo. Cada comercio lo prueba gratis 7 días.</span><span class="zh">一个制作简单自动化工具的团队——一张照片、一条语音、一个编码——解决小店铺每天遇到的实际问题。一切都直接在 WhatsApp 上完成，店铺不需要更换系统，也不需要学习新东西。每家店铺都可以免费试用 7 天。</span></p>
 
-  <div class="grid3">
+  <div class="grid2">
     <div class="pilot-mini orange">
       <div class="dot"></div>
-      <h3>Andamio Chino</h3>
-      <p>Ordena la caja chica, los fiados y los pagos a proveedores por foto o audio. Cero tipeo.</p>
+      <h3><span class="es">Andamio Chino</span><span class="zh">安达米奥·华人版</span></h3>
+      <p><span class="es">Foto de la guía y de la factura: el sistema las cruza, registra lo pagado en efectivo y avisa a qué precio actualizar la góndola.</span><span class="zh">拍下送货单和发票：系统自动核对，记录现金付款，并提醒货架标价应该调整到多少。</span></p>
     </div>
     <div class="pilot-mini ochre">
       <div class="dot"></div>
-      <h3>Etiqueta Visión</h3>
-      <p>Cada caja cerrada lleva un QR — se escanea y se sabe qué hay adentro sin abrirla.</p>
+      <h3><span class="es">Etiqueta Visión</span><span class="zh">标签版</span></h3>
+      <p><span class="es">Cajas con QR para saber qué hay adentro sin abrirlas, o prenda por prenda con catálogo e inventario para tiendas que venden por kilo.</span><span class="zh">给箱子贴二维码，不拆箱就知道里面有什么；或按件登记，为按公斤销售的店铺生成商品目录和库存。</span></p>
     </div>
     <div class="pilot-mini teal">
       <div class="dot"></div>
-      <h3>Turnero con Rescate</h3>
-      <p>Si un cliente cancela el turno, el sistema avisa a varios de la lista de espera a la vez y lo recupera en minutos.</p>
+      <h3><span class="es">Turnero con Rescate</span><span class="zh">预约与补位</span></h3>
+      <p><span class="es">Turnos por WhatsApp. Si un cliente cancela, el sistema le ofrece el horario a la lista de espera, de a una persona por vez, hasta llenarlo.</span><span class="zh">通过 WhatsApp 预约。有人取消时，系统逐一联系候补名单上的人，直到补上空位。</span></p>
+    </div>
+    <div class="pilot-mini leaf">
+      <div class="dot"></div>
+      <h3><span class="es">Mermas</span><span class="zh">损耗登记</span></h3>
+      <p><span class="es">Para verdulerías y ferias: foto del cajón que se tira y reporte semanal de cuánta plata se perdió. Conectado con Metamorfosis.</span><span class="zh">适用于蔬果店和市集：拍下要扔掉的货品，每周报告损失了多少钱。与 Metamorfosis 连接。</span></p>
     </div>
   </div>
 </section>
 
 <section class="wrap">
-  <h2>¿Qué hace un Agente de Territorio?</h2>
-  <p class="lead">Es un rol de representante de zona, no un puesto de oficina. Trabajás por tu cuenta, con tus propios horarios, como prestador de servicios independiente — no hay relación de dependencia ni horario fijo.</p>
+  <h2><span class="es">¿Qué hace un Agente de Territorio?</span><span class="zh">区域代理做什么？</span></h2>
+  <p class="lead"><span class="es">Es un rol de representante de zona, no un puesto de oficina. Trabajás por tu cuenta, con tus propios horarios, como prestador de servicios independiente — no hay relación de dependencia ni horario fijo.</span><span class="zh">这是一个区域代表的角色，不是办公室职位。您以独立服务提供者的身份自主工作，自己安排时间——没有雇佣关系，也没有固定工时。</span></p>
   <ol class="steps">
-    <li><b>Presentás la herramienta</b> a comercios de tu zona: mostrás en el celular cómo funciona en menos de un minuto.</li>
-    <li><b>Ayudás a activarlo</b> la primera vez — configurar el WhatsApp del comercio, mostrarle cómo mandar el primer audio o la primera foto.</li>
-    <li><b>Sos el contacto del comercio</b> ante cualquier duda de uso. Si hay un problema técnico que no podés resolver, lo derivás internamente — vos no tenés que arreglar nada de código.</li>
-    <li><b>Cobrás la cuota mensual</b> o acompañás el cobro, y mantenés la relación con esos comercios en el tiempo.</li>
+    <li><span class="es"><b>Presentás la herramienta</b> a comercios de tu zona: mostrás en el celular cómo funciona en menos de un minuto.</span><span class="zh"><b>介绍工具：</b>向您所在区域的店铺，用手机在一分钟内演示它如何运作。</span></li>
+    <li><span class="es"><b>Ayudás a activarlo</b> la primera vez: mostrarle al comercio cómo mandar la primera foto o el primer audio.</span><span class="zh"><b>协助开通：</b>第一次使用时，教店铺如何发送第一张照片或第一条语音。</span></li>
+    <li><span class="es"><b>Sos el contacto del comercio</b> ante cualquier duda de uso. Si hay un problema técnico, lo derivás internamente — vos no tenés que arreglar nada de código.</span><span class="zh"><b>作为店铺的联系人：</b>解答使用上的疑问。遇到技术问题时转交给团队处理——您不需要修改任何代码。</span></li>
+    <li><span class="es"><b>Acompañás el cobro</b> de la cuota mensual y mantenés la relación con esos comercios en el tiempo.</span><span class="zh"><b>协助收取月费：</b>并与这些店铺保持长期联系。</span></li>
   </ol>
 </section>
 
 <section class="wrap">
-  <h2>Cómo se paga</h2>
-  <p class="lead">Es un esquema simple de dos partes: un pago por activar un comercio nuevo, y una renta recurrente mientras ese comercio siga usando la herramienta.</p>
+  <h2><span class="es">Cómo se paga</span><span class="zh">报酬方式</span></h2>
+  <p class="lead"><span class="es">Es un esquema simple de dos partes: un pago por activar un comercio nuevo, y una renta recurrente mientras ese comercio siga usando la herramienta.</span><span class="zh">简单的两部分：开通新店铺时的一次性佣金，以及店铺持续使用期间的每月分成。</span></p>
   <table>
-    <tr><th>Concepto</th><th>Cuándo se cobra</th><th>Cuánto</th></tr>
-    <tr><td>Comisión de activación</td><td>Al activarse el primer pago del comercio</td><td><b>50%</b> de esa primera cuota</td></tr>
-    <tr><td>Renta recurrente</td><td>Cada mes que el comercio siga activo</td><td><b>15%</b> de la cuota mensual</td></tr>
+    <tr><th><span class="es">Concepto</span><span class="zh">项目</span></th><th><span class="es">Cuándo se cobra</span><span class="zh">何时支付</span></th><th><span class="es">Cuánto</span><span class="zh">金额</span></th></tr>
+    <tr><td><span class="es">Comisión de activación</span><span class="zh">开通佣金</span></td><td><span class="es">Cuando el comercio paga su primera cuota</span><span class="zh">店铺支付第一笔月费时</span></td><td><span class="es"><b>50%</b> de esa primera cuota</span><span class="zh">第一笔月费的 <b>50%</b></span></td></tr>
+    <tr><td><span class="es">Renta recurrente</span><span class="zh">每月分成</span></td><td><span class="es">Cada mes que el comercio siga activo</span><span class="zh">店铺持续使用的每个月</span></td><td><span class="es"><b>15%</b> de la cuota mensual</span><span class="zh">月费的 <b>15%</b></span></td></tr>
   </table>
 
   <div class="example-box">
-    <div class="label">Ejemplo concreto</div>
-    Si activás un comercio con el plan de <b>USD 40/mes</b>: cobrás <b>USD 20</b> el primer mes, y después <b>USD 6 por mes</b> mientras ese comercio siga usando la herramienta. Si a lo largo del tiempo sumás varios comercios activos en tu zona, esa renta recurrente se va acumulando mes a mes.
+    <div class="label"><span class="es">Ejemplo</span><span class="zh">举例</span></div>
+    <span class="es">Por cada <b>USD 100</b> de cuota mensual que pague un comercio que activaste: cobrás <b>USD 50</b> el primer mes y después <b>USD 15 por mes</b> mientras siga activo. Si sumás varios comercios en tu zona, esa renta se acumula mes a mes.</span>
+    <span class="zh">您开通的店铺每支付 <b>100 美元</b>月费：第一个月您获得 <b>50 美元</b>，之后只要店铺继续使用，每月获得 <b>15 美元</b>。在您的区域开通的店铺越多，每月分成就越多。</span>
   </div>
+  <p class="nota"><span class="es">Durante la etapa piloto los comercios prueban gratis; las comisiones empiezan cuando el comercio paga su primera cuota.</span><span class="zh">试点阶段店铺可免费试用；店铺支付第一笔月费后才开始计算佣金。</span></p>
 </section>
 
 <section class="wrap">
-  <h2>Lo que no somos</h2>
-  <p class="lead">Para que no haya sorpresas: esto no es un empleo con sueldo fijo ni con horario de oficina. Es un ingreso extra que depende de los comercios que actives y mantengas activos — como cualquier trabajo por comisión. Tampoco es una promesa de hacerse rico rápido: es un proyecto que recién está armando sus primeros casos reales.</p>
+  <h2><span class="es">Lo que no somos</span><span class="zh">我们不是什么</span></h2>
+  <p class="lead"><span class="es">Para que no haya sorpresas: esto no es un empleo con sueldo fijo ni con horario de oficina. Es un ingreso extra que depende de los comercios que actives y mantengas activos — como cualquier trabajo por comisión. Tampoco es una promesa de hacerse rico rápido: es un proyecto que recién está armando sus primeros casos reales.</span><span class="zh">为了避免误会：这不是有固定工资和办公时间的工作。这是一份额外收入，取决于您开通并持续使用的店铺数量——和任何佣金制工作一样。这也不是快速致富的承诺：这个项目才刚刚开始建立第一批真实案例。</span></p>
 </section>
 
 <section class="wrap">
-  <h2>¿Cómo sigo?</h2>
-  <p class="lead">Antes de salir a hablar con comercios, hay una lectura corta (5 módulos, unos minutos) con los 3 pilotos explicados bien claro, y después un cuestionario de 30 preguntas para asegurarnos de que quedó todo entendido. No es para memorizar un discurso — es para que puedas explicarlo con tus propias palabras.</p>
-  <a class="btn" href="evaluacion.html">Empezar la lectura →</a>
+  <h2><span class="es">¿Cómo sigo?</span><span class="zh">下一步</span></h2>
+  <p class="lead"><span class="es">Antes de salir a hablar con comercios, hay una lectura corta con los 4 pilotos explicados bien claro, y después un cuestionario para asegurarnos de que quedó todo entendido. No es para memorizar un discurso — es para que puedas explicarlo con tus propias palabras.</span><span class="zh">在去拜访店铺之前，先阅读一段简短的介绍，清楚了解 4 个试点，然后完成一份问卷，确认您都理解了。这不是要您背台词——而是让您能用自己的话讲清楚。</span></p>
+  <a class="btn" href="evaluacion.html"><span class="es">Empezar la lectura →</span><span class="zh">开始阅读 →</span></a>
 </section>
 
 <div class="cta-final wrap">
-  <h2 style="margin-bottom:14px;">¿Te interesa?</h2>
-  <p class="lead" style="margin-bottom:26px;">Hacé la lectura y el cuestionario: al terminar nos llegan tus datos y te escribimos para charlar qué zona te queda cómoda y cómo arrancamos.</p>
-  <a class="btn" href="evaluacion.html">Empezar →</a>
+  <h2 style="margin-bottom:14px;"><span class="es">¿Te interesa?</span><span class="zh">感兴趣吗？</span></h2>
+  <p class="lead" style="margin-bottom:26px;"><span class="es">Hacé la lectura y el cuestionario: al terminar nos llegan tus datos y te escribimos para charlar qué zona te queda cómoda y cómo arrancamos.</span><span class="zh">完成阅读和问卷后，我们会收到您的信息，并联系您商量适合的区域以及如何开始。</span></p>
+  <a class="btn" href="evaluacion.html"><span class="es">Empezar →</span><span class="zh">开始 →</span></a>
 </div>
 
-<footer>ANDAMIO DIGITAL — Buenos Aires</footer>
+<footer><span class="es">ANDAMIO DIGITAL — Buenos Aires</span><span class="zh">安达米奥 ANDAMIO DIGITAL — 布宜诺斯艾利斯</span></footer>
+
+<script>
+(function(){
+  var d = document.documentElement;
+  var TITULOS = {es: 'Sumate a Andamio Digital — Agente de Territorio', zh: '加入安达米奥 — 区域代理'};
+  function guardar(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
+  function aplicar(l){ d.setAttribute('data-lang', l); d.setAttribute('lang', l === 'zh' ? 'zh-CN' : 'es'); document.title = TITULOS[l]; }
+  aplicar(d.getAttribute('data-lang') || 'es');
+  document.getElementById('btn-idioma').addEventListener('click', function(){
+    var l = d.getAttribute('data-lang') === 'zh' ? 'es' : 'zh'; aplicar(l); guardar('andamio-idioma', l);
+  });
+  document.getElementById('btn-tema').addEventListener('click', function(){
+    var t = d.getAttribute('data-theme') === 'light' ? 'dark' : 'light'; d.setAttribute('data-theme', t); guardar('andamio-tema', t);
+  });
+})();
+</script>
 
 </body>
 </html>

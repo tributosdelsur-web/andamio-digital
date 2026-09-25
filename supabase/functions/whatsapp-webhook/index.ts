@@ -222,10 +222,14 @@ async function procesar(m: Entrante) {
     case "sin_modulos":
       salida = { respuesta: TEXTOS.sinModulos[decision.idioma] };
       break;
-    case "cliente_turnero":
+    case "cliente_turnero": {
       moduloSesion = "turnero";
-      salida = clienteTurnero();
+      // El cliente final recibe los mensajes en el idioma del comercio
+      const { data: co } = await db.from("comercios").select("idioma")
+        .eq("id", decision.comercioId).maybeSingle();
+      salida = clienteTurnero((co?.idioma ?? "es") as Idioma);
       break;
+    }
     case "cliente_ambiguo":
       salida = { respuesta: TEXTOS.clienteAmbiguo };
       break;

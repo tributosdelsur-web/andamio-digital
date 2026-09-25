@@ -58,24 +58,33 @@ const etiqueta: Manejador = ({ idioma, mensaje }) => {
   };
 };
 
-const turnero: Manejador = () => ({
-  respuesta: "📅 El Turnero está en preparación. Muy pronto vas a poder ver y gestionar tu agenda desde acá.",
+const turnero: Manejador = ({ idioma }) => ({
+  respuesta: idioma === "zh"
+    ? "📅 预约功能正在准备中。很快您就可以在这里查看和管理您的预约。"
+    : "📅 El Turnero está en preparación. Muy pronto vas a poder ver y gestionar tu agenda desde acá.",
 });
 
-const mermas: Manejador = ({ mensaje }) => {
+const mermas: Manejador = ({ idioma, mensaje }) => {
   if (esMedia(mensaje.tipo)) {
     return {
-      respuesta:
-        "🥬 Recibido. Pronto voy a estimar producto y kilos automáticamente; la foto ya quedó guardada.",
+      respuesta: idioma === "zh"
+        ? "🥬 已收到。很快会自动估算商品和重量，照片已保存。"
+        : "🥬 Recibido. Pronto voy a estimar producto y kilos automáticamente; la foto ya quedó guardada.",
       paso: "recibido",
     };
   }
-  return { respuesta: "Mandame una foto del cajón o un audio, por ejemplo: «3 kg de tomate, 2 de lechuga»." };
+  return {
+    respuesta: idioma === "zh"
+      ? "请发送筐子的照片，或发语音，例如：「3 公斤番茄、2 公斤生菜」。"
+      : "Mandame una foto del cajón o un audio, por ejemplo: «3 kg de tomate, 2 de lechuga».",
+  };
 };
 
 export const MANEJADORES: Record<Modulo, Manejador> = { chino, etiqueta, turnero, mermas };
 
 /** Respuesta para clientes finales de un comercio con Turnero */
-export const clienteTurnero = (): SalidaModulo => ({
-  respuesta: "Hola 👋 Pronto vas a poder sacar, confirmar o cancelar tu turno por acá.",
+export const clienteTurnero = (idioma: Idioma = "es"): SalidaModulo => ({
+  respuesta: idioma === "zh"
+    ? "您好 👋 很快您就可以在这里预约、确认或取消预约。"
+    : "Hola 👋 Pronto vas a poder sacar, confirmar o cancelar tu turno por acá.",
 });

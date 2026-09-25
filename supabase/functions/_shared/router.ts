@@ -152,13 +152,17 @@ export function textoMenu(idioma: Idioma, opciones: Modulo[]): string {
 }
 
 export const TEXTOS = {
+  // Número desconocido: no sabemos el idioma, va en los dos
   desconocido:
     "Hola 👋 Este es el asistente de Andamio Digital. Este número todavía no está registrado. " +
-    "Si tenés un comercio y querés probarlo, respondé con tu nombre y el de tu comercio y te contactamos.",
+    "Si tenés un comercio y querés probarlo, respondé con tu nombre y el de tu comercio y te contactamos.\n\n" +
+    "您好 👋 这里是安达米奥（Andamio Digital）助手。这个号码还没有注册。" +
+    "如果您有店铺并想试用，请回复您的姓名和店名，我们会联系您。",
   sinModulos: {
     es: "Tu comercio está registrado pero todavía no tiene módulos activos. Te avisamos cuando esté listo.",
     zh: "您的商店已注册，但尚未启用任何功能。准备好后我们会通知您。",
   },
   clienteAmbiguo:
-    "Hola 👋 Tu número figura en más de un comercio. Escribile directamente al local donde querés sacar turno.",
+    "Hola 👋 Tu número figura en más de un comercio. Escribile directamente al local donde querés sacar turno.\n\n" +
+    "您好 👋 您的号码登记在多家店铺。请直接联系您想预约的店铺。",
 };
