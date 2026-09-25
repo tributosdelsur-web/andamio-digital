@@ -34,6 +34,8 @@ import {
   textoMenu,
 } from "../_shared/router.ts";
 import { clienteTurnero, MANEJADORES, type SalidaModulo } from "../_shared/modulos.ts";
+import { manejarPrendas, TXT as TXT_PRENDAS } from "../_shared/prendas.ts";
+import { repoPrendas } from "../_shared/prendas_repo.ts";
 
 const db: SupabaseClient = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -199,20 +201,25 @@ async function procesar(m: Entrante) {
       const datosPrevios = decision.cambioModulo ? {} : (sesionVigente?.datos ?? {});
       if (decision.cambioModulo && sesionVigente?.paso === "elegir_modulo") {
         // Recién eligió del menú: confirmamos y esperamos su primer mensaje
-        salida = MANEJADORES[decision.modulo]({
+        salida = decision.modulo === "etiqueta" && await modoEtiqueta(decision.comercioId) === "prendas"
+          ? { respuesta: TXT_PRENDAS.ayuda[decision.idioma], paso: null, datos: {} }
+          : MANEJADORES[decision.modulo]({
           comercioId: decision.comercioId,
           idioma: decision.idioma,
           mensaje: { ...m, tipo: "text", texto: "" },
           sesion: { paso: null, datos: {} },
         }) as SalidaModulo;
       } else {
-        salida = await MANEJADORES[decision.modulo]({
+        const entrada = {
           comercioId: decision.comercioId,
           idioma: decision.idioma,
           mensaje: m,
           mediaPath,
           sesion: { paso: decision.cambioModulo ? null : sesionVigente?.paso, datos: datosPrevios },
-        });
+        };
+        salida = decision.modulo === "etiqueta" && await modoEtiqueta(decision.comercioId) === "prendas"
+          ? await manejarPrendas(entrada, repoPrendas(db, decision.comercioId, mensajeId))
+          : await MANEJADORES[decision.modulo](entrada);
       }
       break;
     }
@@ -271,6 +278,13 @@ async function procesar(m: Entrante) {
     estado: envio.error ? "failed" : "sent",
     error: envio.error ?? null,
   });
+}
+
+/** Etiqueta Visión: «cajas» (mayoristas, por defecto) o «prendas» (ropa por kilo) */
+async function modoEtiqueta(comercioId: string): Promise<"cajas" | "prendas"> {
+  const { data } = await db.from("comercio_modulos").select("config")
+    .eq("comercio_id", comercioId).eq("modulo", "etiqueta").maybeSingle();
+  return data?.config?.modo === "prendas" ? "prendas" : "cajas";
 }
 
 const TIPOS = new Set([
