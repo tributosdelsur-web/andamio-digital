@@ -45,8 +45,9 @@ licencias con lo que se recaude.
   de cada mensaje (sin duplicados), fotos y audios guardados en Storage, router
   por número con menú cuando el comercio tiene varios módulos, sesiones de 24 h,
   respuestas en español y chino.
-- **Hecho (26–27/9):** Etiqueta Visión modo «prenda por prenda»: alta con etiqueta QR,
-  escaneo con botones, retiro en tienda y envíos, traza y cuota por tramos (ver abajo).
+- **Hecho (26–27/9):** Etiqueta Visión modo «prenda por prenda»: inventario solo con
+  fotos de las etiquetas propias de la tienda (o etiquetas QR), retiro en tienda y
+  envíos, traza y cobro por prenda (ver abajo).
 - **Pendiente (próximas semanas del plan):** el resto de la lógica. Andamio Chino,
   Etiqueta en modo cajas, Turnero y Mermas todavía confirman la recepción y guardan
   la foto; después se agregan la lectura con IA de guías y facturas, la conciliación,
@@ -62,7 +63,27 @@ update comercio_modulos
  where comercio_id = '<id del comercio>' and modulo = 'etiqueta';
 ```
 
-(El precio por kilo también lo puede cargar el dueño por WhatsApp: «precio 12000».)
+Hay dos formas de trabajar. Por defecto es **etiquetas propias**; para la de QR se
+agrega `"etiquetas": "qr"` al config.
+
+### Etiquetas propias (por defecto): la tienda no cambia nada
+
+La tienda sigue pesando y poniendo su etiqueta con el precio. Solo saca fotos:
+
+- **Entrada:** foto de la prenda con su etiqueta. La IA lee el precio y describe la
+  prenda («campera negra»); el peso se calcula al revés (precio ÷ precio por kilo).
+  Si el precio está mal, se responde con el correcto. Si no se pudo leer, el bot lo pregunta.
+- **Venta:** otra foto (o con el texto «vendí»). Busca en stock las prendas con ese
+  precio: si hay una, la vende; si hay varias, elige la más parecida por descripción o
+  pregunta con botones.
+- **La última acción queda por defecto** durante 30 minutos: una tanda de entradas o
+  una tanda de ventas no necesita aclarar nada. Siempre hay botones para corregir
+  («Era una venta», «Era una entrada», «Era retiro», «Era envío», «Borrar»).
+- Retiro en tienda y envíos se siguen desde «pendientes» (lista numerada → opciones).
+
+Sin `CF_ACCOUNT_ID`/`CF_AI_TOKEN` funciona igual, escribiendo el precio en el pie de la foto.
+
+### Etiquetas QR
 
 **Alta:** foto de la prenda + peso («0,85», «850 g», «1.7斤»). El bot devuelve la
 etiqueta en PNG (QR grande + código + peso y precio) para imprimir con una impresora
@@ -83,29 +104,27 @@ botones:
 Si escanea alguien que **no** es del comercio (un comprador), ve la foto y el precio y
 un link al WhatsApp de la tienda para pedirla (retiro en tienda o envío).
 
+### En los dos modos
+
 **Envíos:** los hace la tienda con la empresa que ya usa (PedidosYa, Uber, moto
 propia). Andamio solo registra el estado y una nota: «envío K7M3Q PedidosYa <link>».
 
 **Traza:** cada paso queda en `articulo_eventos` (quién, cuándo, foto, nota).
 «historial K7M3Q» la muestra; «pendientes» lista reservas y envíos en curso.
 
-**Cuota por tramos** (solo este modo), según prendas dadas de alta en el mes, hora
-de Buenos Aires. Se editan en la tabla `tramos_prendas`:
-
-| Tramo | Altas en el mes | Cuota |
-|---|---|---|
-| Chico | hasta 300 | USD 37 |
-| Mediano | 301 a 1.000 | USD 65 |
-| Grande | más de 1.000 | USD 95 |
-
-El dueño ve su uso con «uso» y recibe un aviso al pasar de tramo. Para cobrar:
+**Cobro:** USD 37 por mes con 300 prendas incluidas y USD 0,40 por cada prenda
+extra, contando prendas dadas de alta en el mes (hora de Buenos Aires). Se cambia en
+la tabla `plan_prendas` (y `techo_usd` si se quiere un tope). Un comercio puede tener
+su propio plan en `config.plan`, por ejemplo `{"plan": {"por_prenda_usd": 0.3}}`.
+Las entradas borradas por error no cuentan. El dueño ve su cuenta con «uso» y recibe
+un aviso al pasar las incluidas. Para cobrar:
 `select * from facturacion_prendas order by mes desc;`
 
-Otros comandos: «vendí / reservar / envío / entregado / deshacer / baja + código»,
-«stock», «catálogo», «ayuda» (y sus equivalentes en chino).
+Otros comandos: «stock», «precio 12000» (por kilo), «catálogo», «ayuda» (y sus
+equivalentes en chino).
 
 Las fotos de alta y las etiquetas van al bucket público `catalogo`; las fotos de venta
-quedan en `wa-media` como respaldo. Los códigos son únicos en todo Andamio.
+quedan en `wa-media` como respaldo. Los códigos internos son únicos en todo Andamio.
 
 **Lectura automática del código (opcional):** con `CF_ACCOUNT_ID` y `CF_AI_TOKEN`
 el bot usa Workers AI (plan gratis). Sin esas variables, simplemente pide el código.

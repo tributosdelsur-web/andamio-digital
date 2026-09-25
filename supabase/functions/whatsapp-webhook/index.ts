@@ -36,7 +36,7 @@ import {
   textoMenu,
 } from "../_shared/router.ts";
 import { clienteTurnero, MANEJADORES, type SalidaModulo } from "../_shared/modulos.ts";
-import { manejarPrendas, TXT as TXT_PRENDAS } from "../_shared/prendas.ts";
+import { manejarPrendas } from "../_shared/prendas.ts";
 import { fichaComprador, repoPrendas } from "../_shared/prendas_repo.ts";
 
 const db: SupabaseClient = createClient(
@@ -208,7 +208,12 @@ async function procesar(m: Entrante) {
       if (decision.cambioModulo && sesionVigente?.paso === "elegir_modulo") {
         // Recién eligió del menú: confirmamos y esperamos su primer mensaje
         salida = decision.modulo === "etiqueta" && await modoEtiqueta(decision.comercioId) === "prendas"
-          ? { respuesta: TXT_PRENDAS.ayuda[decision.idioma], paso: null, datos: {} }
+          ? await manejarPrendas({
+            comercioId: decision.comercioId,
+            idioma: decision.idioma,
+            mensaje: { ...m, tipo: "text", texto: "ayuda" },
+            sesion: { paso: null, datos: {} },
+          }, repoPrendas(db, decision.comercioId, { telefono: m.from, numeroBot: m.numeroBot }))
           : MANEJADORES[decision.modulo]({
           comercioId: decision.comercioId,
           idioma: decision.idioma,

@@ -1,12 +1,17 @@
 -- ============================================================================
--- Andamio Digital · Etiqueta Visión, prenda por prenda: QR, entregas y tramos
+-- Andamio Digital · Etiqueta Visión, prenda por prenda: fotos, QR, entregas y cobro
 --
 --   * Cada prenda lleva una etiqueta con QR que abre WhatsApp con su código.
 --     Cada escaneo avanza la operación: stock → reserva (retiro o envío) →
 --     en camino → entregada. Todo queda en articulo_eventos (quién y cuándo).
 --   * Los envíos los hace el comercio con la empresa que ya usa (PedidosYa,
 --     Uber, moto propia…); Andamio solo registra el estado y una nota.
---   * Cuota por tramos según prendas dadas de alta en el mes (tramos_prendas).
+--   * Dos formas de identificar la prenda (comercio_modulos.config.etiquetas):
+--       'propias' (por defecto): la tienda sigue con sus etiquetas de precio; el bot
+--                 lee el precio y describe la prenda en la foto, y calcula el peso.
+--       'qr':     el bot manda una etiqueta con QR para imprimir.
+--   * Cobro: cuota base con prendas incluidas + un monto por prenda extra
+--     (plan_prendas), según prendas dadas de alta en el mes.
 -- ============================================================================
 
 -- Estados nuevos: en_camino y entregado
@@ -17,7 +22,8 @@ alter table public.articulos add constraint articulos_estado_check
 alter table public.articulos
   add column if not exists entrega text check (entrega in ('local', 'retiro', 'envio')),
   add column if not exists envio_nota text,          -- empresa, link de seguimiento, zona
-  add column if not exists etiqueta_path text;       -- PNG de la etiqueta con QR (bucket catalogo)
+  add column if not exists etiqueta_path text,       -- PNG de la etiqueta con QR (bucket catalogo)
+  add column if not exists descripcion_zh text;      -- descripción corta en chino (la hace la IA)
 
 -- Los códigos pasan a ser únicos en todo Andamio: así un comprador que escanea
 -- el QR llega a la prenda correcta sin saber de qué tienda es.
@@ -67,7 +73,7 @@ create table if not exists public.articulo_eventos (
   articulo_id uuid not null references public.articulos(id) on delete cascade,
   comercio_id uuid not null references public.comercios(id) on delete cascade,
   evento      text not null check (evento in
-                ('alta', 'en_stock', 'reservado', 'en_camino', 'vendido', 'entregado', 'baja')),
+                ('alta', 'en_stock', 'reservado', 'en_camino', 'vendido', 'entregado', 'baja', 'correccion')),
   entrega     text check (entrega in ('local', 'retiro', 'envio')),
   telefono    text,                                   -- quién lo hizo
   mensaje_id  uuid references public.mensajes(id) on delete set null,
@@ -95,44 +101,48 @@ group by comercio_id;
 revoke all on public.inventario_prendas from anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- Cuota por tramos (solo este modo). Editable desde el SQL Editor.
+-- Cobro de este modo: cuota base con N prendas incluidas + USD por prenda extra,
+-- contando prendas dadas de alta en el mes (hora de Buenos Aires). Un solo plan
+-- general; un comercio puede tener otro en comercio_modulos.config.plan.
 -- ---------------------------------------------------------------------------
-create table if not exists public.tramos_prendas (
-  orden      int primary key,
-  nombre_es  text not null,
-  nombre_zh  text not null,
-  hasta      int check (hasta > 0),                   -- null = sin tope (último tramo)
-  cuota_usd  numeric(10,2) not null check (cuota_usd >= 0)
+create table if not exists public.plan_prendas (
+  id              boolean primary key default true check (id),   -- una sola fila
+  cuota_base_usd  numeric(10,2) not null check (cuota_base_usd >= 0),
+  incluidas       int not null check (incluidas >= 0),
+  por_prenda_usd  numeric(10,4) not null check (por_prenda_usd >= 0),
+  techo_usd       numeric(10,2) check (techo_usd > 0)            -- null = sin techo
 );
-insert into public.tramos_prendas (orden, nombre_es, nombre_zh, hasta, cuota_usd) values
-  (1, 'Chico',   '小', 300,  37),
-  (2, 'Mediano', '中', 1000, 65),
-  (3, 'Grande',  '大', null, 95)
-on conflict (orden) do nothing;
-alter table public.tramos_prendas enable row level security;
+insert into public.plan_prendas (cuota_base_usd, incluidas, por_prenda_usd, techo_usd)
+values (37, 300, 0.40, null)
+on conflict (id) do nothing;
+alter table public.plan_prendas enable row level security;
 
--- Prendas dadas de alta en el mes (hora de Buenos Aires) y tramo que corresponde
+drop view if exists public.facturacion_prendas;
+drop function if exists public.uso_prendas(uuid, date);
 create or replace function public.uso_prendas(p_comercio uuid, p_mes date default null)
-returns table (mes date, altas bigint, orden int, nombre_es text, nombre_zh text, hasta int, cuota_usd numeric)
+returns table (mes date, altas bigint, incluidas int, extra bigint, cuota_base_usd numeric,
+               por_prenda_usd numeric, techo_usd numeric, cuota_usd numeric)
 language sql stable security definer set search_path = public as $$
   with m as (
-    select coalesce(p_mes, (now() at time zone 'America/Argentina/Buenos_Aires')::date) as d
-  ), r as (
-    select date_trunc('month', m.d)::date as desde,
-           (date_trunc('month', m.d) + interval '1 month')::date as hasta_fecha
-    from m
+    select date_trunc('month', coalesce(p_mes, (now() at time zone 'America/Argentina/Buenos_Aires')::date))::date as desde
   ), a as (
-    select count(*) as n from public.articulos x, r
+    select count(*) as n from public.articulos x, m
     where x.comercio_id = p_comercio
-      and (x.created_at at time zone 'America/Argentina/Buenos_Aires') >= r.desde
-      and (x.created_at at time zone 'America/Argentina/Buenos_Aires') <  r.hasta_fecha
+      and (x.created_at at time zone 'America/Argentina/Buenos_Aires') >= m.desde
+      and (x.created_at at time zone 'America/Argentina/Buenos_Aires') <  (m.desde + interval '1 month')
+  ), p as (
+    -- Plan propio del comercio si lo tiene; si no, el general
+    select coalesce((cm.config -> 'plan' ->> 'cuota_base_usd')::numeric, pp.cuota_base_usd) as base,
+           coalesce((cm.config -> 'plan' ->> 'incluidas')::int, pp.incluidas)              as incl,
+           coalesce((cm.config -> 'plan' ->> 'por_prenda_usd')::numeric, pp.por_prenda_usd) as unit,
+           case when cm.config -> 'plan' ? 'techo_usd'
+                then (cm.config -> 'plan' ->> 'techo_usd')::numeric else pp.techo_usd end as techo
+    from public.plan_prendas pp
+    left join public.comercio_modulos cm on cm.comercio_id = p_comercio and cm.modulo = 'etiqueta'
   )
-  select r.desde, a.n, t.orden, t.nombre_es, t.nombre_zh, t.hasta, t.cuota_usd
-  from r, a, lateral (
-    select * from public.tramos_prendas tp
-    where tp.hasta is null or tp.hasta >= a.n
-    order by tp.orden limit 1
-  ) t
+  select m.desde, a.n, p.incl, greatest(a.n - p.incl, 0), p.base, p.unit, p.techo,
+         round(least(p.base + greatest(a.n - p.incl, 0) * p.unit, coalesce(p.techo, 'infinity'::numeric)), 2)
+  from m, a, p
 $$;
 revoke all on function public.uso_prendas(uuid, date) from public, anon, authenticated;
 do $$ begin
@@ -143,7 +153,7 @@ end $$;
 
 -- Para cobrar: una fila por comercio y mes
 create or replace view public.facturacion_prendas as
-select co.id as comercio_id, co.nombre, co.estado, u.mes, u.altas, u.nombre_es as tramo, u.cuota_usd
+select co.id as comercio_id, co.nombre, co.estado, u.mes, u.altas, u.incluidas, u.extra, u.cuota_usd
 from public.comercios co
 join public.comercio_modulos cm on cm.comercio_id = co.id and cm.modulo = 'etiqueta'
                                 and cm.config ->> 'modo' = 'prendas'

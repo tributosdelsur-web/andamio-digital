@@ -2,7 +2,16 @@
 //
 // Para tiendas que venden ropa por kilo. Todo por WhatsApp, en español o chino.
 //
-//   ALTA     foto de la prenda + peso («0,85», «850 g», «1.7 斤») → el bot manda la
+//   Dos formas de trabajar (comercio_modulos.config.etiquetas):
+//
+//   «propias» (por defecto) — la tienda sigue igual, con sus etiquetas de precio.
+//            ALTA: foto de la prenda con su etiqueta → la IA lee el precio y describe
+//            la prenda; el peso se calcula al revés (precio ÷ precio por kilo).
+//            VENTA: otra foto → mismo precio en stock; si hay varias, la más parecida
+//            o botones para elegir. La última acción queda por defecto (una tanda de
+//            altas, una tanda de ventas) y siempre hay un botón para corregir.
+//
+//   «qr»     — ALTA: foto + peso («0,85», «850 g», «1.7 斤») → el bot manda la
 //            etiqueta con QR y código para imprimir. Queda en stock y en el catálogo.
 //   ESCANEO  el QR abre WhatsApp con el código escrito; al mandarlo, el bot ofrece
 //            el paso siguiente según el estado de la prenda:
@@ -15,7 +24,8 @@
 //   TEXTO    «vendí K7M3Q», «reservar K7M3Q», «envío K7M3Q PedidosYa», «entregado
 //            K7M3Q», «deshacer», «baja», «pendientes», «historial K7M3Q», «stock»,
 //            «precio 12000», «catálogo», «uso», «ayuda» (y sus equivalentes en chino).
-//   TRAMOS   la cuota depende de las prendas dadas de alta en el mes («uso»).
+//   COBRO    cuota base con prendas incluidas + un monto por prenda extra, según
+//            prendas dadas de alta en el mes («uso»).
 //
 // La lógica no toca la base directamente: usa un RepoPrendas (prendas_repo.ts);
 // así se prueba sin Supabase (tests/prendas_test.ts).
@@ -34,35 +44,64 @@ export interface Articulo {
   envio_nota?: string | null;
   peso_kg: number | null;
   precio: number | null;
+  descripcion?: string | null;
+  descripcion_zh?: string | null;
 }
 
 export interface Evento {
-  evento: EstadoArticulo | "alta";
+  evento: EstadoArticulo | "alta" | "correccion";
   entrega?: Entrega | null;
   nota?: string | null;
   created_at: string;
 }
 
-export interface Tramo {
-  orden: number;
-  nombre_es: string;
-  nombre_zh: string;
-  hasta: number | null;
-  cuota_usd: number;
+export interface Uso {
+  altas: number;
+  incluidas: number;
+  extra: number;
+  base: number;
+  por_prenda: number;
+  techo: number | null;
+  cuota: number;
+}
+
+export interface Lectura {
+  precio: number | null;
+  es: string | null;
+  zh: string | null;
+}
+
+export interface ConfigPrendas {
+  precio_kg?: number | null;
+  slug?: string | null;
+  catalogo_publico?: boolean;
+  /** «propias» (por defecto): etiquetas de precio de la tienda · «qr»: etiquetas de Andamio */
+  etiquetas?: "propias" | "qr";
 }
 
 export interface RepoPrendas {
-  config(): Promise<{ precio_kg?: number | null; slug?: string | null; catalogo_publico?: boolean }>;
+  config(): Promise<ConfigPrendas>;
   guardarPrecioKg(precio: number): Promise<void>;
   /** Devuelve el primer código de la lista que exista en este comercio */
   buscar(codigos: string[]): Promise<Articulo | null>;
-  crear(a: { peso_kg: number; precio_kg: number; fotoPath?: string }): Promise<Articulo>;
+  crear(a: {
+    peso_kg: number | null; precio_kg: number | null; fotoPath?: string;
+    precio_manual?: number; descripcion?: string | null; descripcion_zh?: string | null;
+  }): Promise<Articulo>;
+  /** Corrige el precio (y el peso calculado) de una prenda recién cargada */
+  corregirPrecio(a: Articulo, precio: number, pesoKg: number | null): Promise<void>;
+  /** Borra una prenda cargada por error (no cuenta para el cobro) */
+  eliminar(a: Articulo): Promise<void>;
+  /** Prendas en stock con ese precio, las más viejas primero */
+  candidatos(precio: number): Promise<Articulo[]>;
   cambiarEstado(a: Articulo, estado: EstadoArticulo, o: { entrega?: Entrega | null; foto?: string; nota?: string }): Promise<void>;
   resumen(): Promise<{ en_stock: number; kg: number; valor: number }>;
   pendientes(): Promise<Articulo[]>;
   historial(a: Articulo): Promise<Evento[]>;
-  /** Prendas dadas de alta este mes, tramo que corresponde y todos los tramos */
-  uso(): Promise<{ altas: number; tramo: Tramo; tramos: Tramo[] }>;
+  /** Prendas dadas de alta este mes y cuota que corresponde */
+  uso(): Promise<Uso>;
+  /** Modo «propias»: precio escrito en la etiqueta y descripción de la prenda (IA) */
+  leerEtiquetaPrenda?(fotoPath: string): Promise<Lectura | null>;
   /** Genera la etiqueta PNG con QR y devuelve su URL pública */
   etiqueta?(a: Articulo): Promise<string | null>;
   /** Lectura del código en la foto de la etiqueta (IA). null si no se pudo. */
@@ -268,6 +307,18 @@ export const TXT = {
       "• *文字：*「卖出 K7M3Q」·「预留 K7M3Q」·「发货 K7M3Q 快递公司」·「已送达 K7M3Q」·「撤销 K7M3Q」\n" +
       "• 「待处理」·「记录 K7M3Q」·「库存」·「价格 12000」·「目录」·「用量」",
   },
+  ayudaPropias: {
+    es: "👕 *Inventario con foto*\n" +
+      "• *Entrada:* sacale una foto a la prenda con tu etiqueta de precio. Leo el precio y la anoto.\n" +
+      "• *Venta:* otra foto de la prenda (o con el texto «vendí»). La saco del stock.\n" +
+      "La última acción queda puesta: si mandás varias entradas seguidas, todas son entradas. Siempre te dejo un botón para corregir.\n" +
+      "• «pendientes» (retiros y envíos) · «stock» · «precio 12000» (por kilo, para calcular el peso) · «catálogo» · «uso»",
+    zh: "👕 *拍照管理库存*\n" +
+      "• *入库：*拍一张带价签的衣服照片，我会读取价格并登记。\n" +
+      "• *卖出：*再拍一张这件衣服的照片（或附上「卖出」）。我会把它从库存中移除。\n" +
+      "会沿用上一次的操作：连续发送入库照片，都会当作入库。每次都有按钮可以更正。\n" +
+      "• 「待处理」（取货和配送）·「库存」·「价格 12000」（每公斤，用于计算重量）·「目录」·「用量」",
+  },
   preguntaPeso: {
     es: "📸 Foto recibida. ¿Cuánto pesa? (ej. «0,85» o «850 g»)\nSi es de una prenda que ya tiene etiqueta, mandame el código.",
     zh: "📸 已收到照片。请问重量是多少？（例如「0.85」或「850克」）\n如果这件已经有标签，请发送编号。",
@@ -298,12 +349,17 @@ export const TXT = {
   },
 };
 
-const nombreTramo = (t: Tramo, l: Idioma) => (l === "zh" ? t.nombre_zh : t.nombre_es);
+const usd = (n: number) => "USD " + new Intl.NumberFormat("es-AR", { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }).format(n);
+const usdZh = (n: number) => new Intl.NumberFormat("zh-CN", { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }).format(n) + " 美元";
+
+const desc = (a: Articulo, l: Idioma) => (l === "zh" ? a.descripcion_zh ?? a.descripcion : a.descripcion ?? a.descripcion_zh) ?? null;
 
 function ficha(a: Articulo, l: Idioma) {
+  const d = desc(a, l);
   const entrega = a.entrega && a.estado !== "en_stock" ? ` (${ENTREGA_TXT[a.entrega][l]})` : "";
   const nota = a.envio_nota ? ` · ${a.envio_nota}` : "";
-  return `*${a.codigo}* · ${ESTADO_TXT[a.estado][l]}${entrega}${nota}\n${kilos(a.peso_kg, l)} · ${pesos(a.precio)}`;
+  return `*${a.codigo}*${d ? ` · ${d}` : ""} · ${ESTADO_TXT[a.estado][l]}${entrega}${nota}\n` +
+    (a.peso_kg != null ? `${kilos(a.peso_kg, l)} · ` : "") + pesos(a.precio);
 }
 
 function menu(a: Articulo, l: Idioma): SalidaModulo {
@@ -331,6 +387,22 @@ export async function manejarPrendas(e: EntradaModulo, repo: RepoPrendas): Promi
   const paso = e.sesion.paso ?? null;
   const datos = e.sesion.datos ?? {};
   const fotoPrevia = typeof datos.foto === "string" ? datos.foto : undefined;
+  const cfg = await repo.config();
+  const propias = cfg.etiquetas !== "qr";
+
+  // Modo «etiquetas propias»: fotos de alta y venta, y respuestas a sus preguntas
+  if (propias) {
+    const r = await manejarPropias(repo, l, cfg, { foto, textoCrudo, it, paso, datos });
+    if (r) return r;
+  }
+
+  // Elección en la lista de pendientes: «2» → ficha y opciones de esa prenda
+  const nLista = textoCrudo.trim().match(/^(\d{1,2})$/);
+  if (paso === "prenda_lista" && nLista && Array.isArray(datos.codigos)) {
+    const cod = (datos.codigos as string[])[Number(nLista[1]) - 1];
+    const a = cod ? await repo.buscar([cod]) : null;
+    if (a) return menu(a, l);
+  }
 
   // Respuesta al menú del escaneo: «1», «2», «3» (o el botón, que manda su número)
   const opcion = textoCrudo.trim().match(/^([1-3])(\D|$)/);
@@ -359,7 +431,7 @@ export async function manejarPrendas(e: EntradaModulo, repo: RepoPrendas): Promi
 
   switch (it.accion) {
     case "ayuda":
-      return { respuesta: TXT.ayuda[l], paso: null, datos: {} };
+      return { respuesta: (propias ? TXT.ayudaPropias : TXT.ayuda)[l], paso: null, datos: {} };
     case "stock": {
       const r = await repo.resumen();
       return {
@@ -374,15 +446,21 @@ export async function manejarPrendas(e: EntradaModulo, repo: RepoPrendas): Promi
       const ps = await repo.pendientes();
       if (!ps.length) return { respuesta: TXT.sinPendientes[l] };
       const titulo = l === "zh" ? `📋 待处理（${ps.length}）` : `📋 Pendientes (${ps.length})`;
-      const lineas = ps.slice(0, 30).map((a) => "• " + ficha(a, l).split("\n")[0]);
-      return { respuesta: [titulo, ...lineas].join("\n") };
+      const lista = ps.slice(0, 30);
+      const lineas = lista.map((a, i) => `${i + 1} · ` + ficha(a, l).split("\n")[0]);
+      const pie = l === "zh" ? "回复数字查看并标记。" : "Respondé con el número para marcarla.";
+      return {
+        respuesta: [titulo, ...lineas, "", pie].join("\n"),
+        paso: "prenda_lista",
+        datos: { ...conservar(datos), codigos: lista.map((a) => a.codigo) },
+      };
     }
     case "precio":
       if (!it.monto) return { respuesta: TXT.preguntaPrecio[l], paso: "prenda_precio", datos: {} };
       await repo.guardarPrecioKg(it.monto);
       return { respuesta: TXT.precioGuardado[l](pesos(it.monto)), paso: null, datos: {} };
     case "catalogo": {
-      const c = await repo.config();
+      const c = cfg;
       if (!c.slug || !c.catalogo_publico || !repo.urlCatalogo) return { respuesta: TXT.sinCatalogo[l] };
       const url = repo.urlCatalogo(c.slug);
       return {
@@ -404,7 +482,7 @@ export async function manejarPrendas(e: EntradaModulo, repo: RepoPrendas): Promi
   // Alta: hay peso (en el texto o en el pie de foto)
   if (it.pesoKg !== undefined) {
     const fotoAlta = foto ?? (paso === "prenda_foto" ? fotoPrevia : undefined);
-    const c = await repo.config();
+    const c = cfg;
     if (!c.precio_kg) {
       return { respuesta: TXT.preguntaPrecio[l], paso: "prenda_precio", datos: { peso: it.pesoKg, foto: fotoAlta } };
     }
@@ -430,20 +508,34 @@ export async function manejarPrendas(e: EntradaModulo, repo: RepoPrendas): Promi
     return { respuesta: TXT.preguntaPeso[l], paso: "prenda_foto", datos: { foto } };
   }
 
-  return { respuesta: TXT.ayuda[l], paso: null, datos: {} };
+  return { respuesta: (propias ? TXT.ayudaPropias : TXT.ayuda)[l], paso: null, datos: conservar(datos) };
 }
 
 async function textoUso(repo: RepoPrendas, l: Idioma): Promise<string> {
   const u = await repo.uso();
-  const siguiente = u.tramos.find((t) => t.orden === u.tramo.orden + 1);
   if (l === "zh") {
-    return `📈 本月上架：${entero(u.altas)} 件\n档位：${nombreTramo(u.tramo, l)}` +
-      (u.tramo.hasta ? `（最多 ${entero(u.tramo.hasta)} 件）` : "") + ` · 每月 ${u.tramo.cuota_usd} 美元` +
-      (siguiente && u.tramo.hasta ? `\n再上架 ${entero(u.tramo.hasta - u.altas + 1)} 件进入「${nombreTramo(siguiente, l)}」档。` : "");
+    return `📈 本月上架：${entero(u.altas)} 件\n` +
+      `月费 ${usdZh(u.base)}，包含 ${entero(u.incluidas)} 件` +
+      (u.extra ? `\n超出 ${entero(u.extra)} 件 × ${usdZh(u.por_prenda)}` : `，之后每件 ${usdZh(u.por_prenda)}`) +
+      `\n本月费用：*${usdZh(u.cuota)}*` + (u.techo ? `（上限 ${usdZh(u.techo)}）` : "");
   }
-  return `📈 Este mes: ${entero(u.altas)} prendas dadas de alta\nTramo ${nombreTramo(u.tramo, l)}` +
-    (u.tramo.hasta ? ` (hasta ${entero(u.tramo.hasta)})` : "") + ` · USD ${u.tramo.cuota_usd}/mes` +
-    (siguiente && u.tramo.hasta ? `\nCon ${entero(u.tramo.hasta - u.altas + 1)} altas más pasás al tramo ${nombreTramo(siguiente, l)}.` : "");
+  return `📈 Este mes: ${entero(u.altas)} prendas dadas de alta\n` +
+    `Cuota ${usd(u.base)} con ${entero(u.incluidas)} incluidas` +
+    (u.extra ? `\n+ ${entero(u.extra)} extra × ${usd(u.por_prenda)}` : `; después, ${usd(u.por_prenda)} por prenda`) +
+    `\nTotal del mes: *${usd(u.cuota)}*` + (u.techo ? ` (tope ${usd(u.techo)})` : "");
+}
+
+/** Aviso cuando esta alta es la primera fuera de las incluidas del mes */
+async function avisoUso(repo: RepoPrendas, l: Idioma): Promise<string> {
+  try {
+    const u = await repo.uso();
+    if (u.altas !== u.incluidas + 1 || !u.por_prenda) return "";
+    return l === "zh"
+      ? `\n\n📈 本月已超过包含的 ${entero(u.incluidas)} 件：之后每件 ${usdZh(u.por_prenda)}。`
+      : `\n\n📈 Pasaste las ${entero(u.incluidas)} prendas incluidas del mes: desde ahora cada una suma ${usd(u.por_prenda)}.`;
+  } catch (_) {
+    return ""; // el aviso nunca frena un alta
+  }
 }
 
 async function alta(repo: RepoPrendas, l: Idioma, pesoKg: number, precioKg: number, fotoPath?: string): Promise<SalidaModulo> {
@@ -457,16 +549,7 @@ async function alta(repo: RepoPrendas, l: Idioma, pesoKg: number, precioKg: numb
       (imagen ? "Imprimí esta etiqueta y pegala en la prenda." : "Escribí el código en la etiqueta.") +
       (fotoPath ? "" : "\n(Sin foto: en el catálogo no va a tener imagen.)");
 
-  // Aviso cuando este alta hace pasar al comercio a otro tramo
-  try {
-    const u = await repo.uso();
-    const cruzado = u.tramos.find((t) => t.hasta !== null && t.hasta + 1 === u.altas);
-    if (cruzado) {
-      respuesta += l === "zh"
-        ? `\n\n📈 本月已上架 ${entero(u.altas)} 件，进入「${nombreTramo(u.tramo, l)}」档（每月 ${u.tramo.cuota_usd} 美元）。`
-        : `\n\n📈 Llegaste a ${entero(u.altas)} altas este mes: pasás al tramo ${nombreTramo(u.tramo, l)} (USD ${u.tramo.cuota_usd}/mes).`;
-    }
-  } catch (_) { /* el aviso de tramo nunca frena un alta */ }
+  respuesta += await avisoUso(repo, l);
 
   return { respuesta, imagen: imagen ?? undefined, paso: null, datos: {} };
 }
@@ -498,7 +581,10 @@ async function ejecutar(repo: RepoPrendas, l: Idioma, a: Articulo, p: Paso, o: {
     const f = new Intl.DateTimeFormat(l === "zh" ? "zh-CN" : "es-AR", {
       timeZone: "America/Argentina/Buenos_Aires", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
     });
-    const nombre = (x: Evento) => x.evento === "alta" ? (l === "zh" ? "上架" : "alta") : ESTADO_TXT[x.evento][l];
+    const nombre = (x: Evento) =>
+      x.evento === "alta" ? (l === "zh" ? "上架" : "alta")
+      : x.evento === "correccion" ? (l === "zh" ? "更正" : "corrección")
+      : ESTADO_TXT[x.evento][l];
     const lineas = ev.map((x) =>
       `• ${f.format(new Date(x.created_at))} · ${nombre(x)}` +
       (x.entrega && x.evento !== "en_stock" ? ` (${ENTREGA_TXT[x.entrega][l]})` : "") +
@@ -523,10 +609,10 @@ async function ejecutar(repo: RepoPrendas, l: Idioma, a: Articulo, p: Paso, o: {
   const c = a.codigo;
   const txt: Record<Paso, { es: string; zh: string }> = {
     venta_local: { es: `✅ ${c} vendida en el local (${pesos(a.precio)}). ${quedan}`, zh: `✅ ${c} 店内已售（${pesos(a.precio)}）。${quedan}` },
-    reserva_retiro: { es: `⏸️ ${c} reservada para retiro en tienda: ya no aparece en el catálogo. Cuando la retiren, escaneá el QR otra vez.`, zh: `⏸️ ${c} 已预留到店取货，目录中不再显示。客人取货时请再扫一次二维码。` },
-    reserva_envio: { es: `⏸️ ${c} reservada para envío. Cuando salga, escaneá el QR otra vez (o escribí «envío ${c}» y la empresa o el link de seguimiento).`, zh: `⏸️ ${c} 已预留配送。发货时请再扫一次二维码（或写「发货 ${c}」加快递公司或查询链接）。` },
+    reserva_retiro: { es: `⏸️ ${c} reservada para retiro en tienda: ya no aparece en el catálogo. Cuando la retiren, marcala desde «pendientes».`, zh: `⏸️ ${c} 已预留到店取货，目录中不再显示。客人取货时，在「待处理」里标记。` },
+    reserva_envio: { es: `⏸️ ${c} reservada para envío. Cuando salga, marcala desde «pendientes» o escribí «envío ${c}» con la empresa o el link de seguimiento.`, zh: `⏸️ ${c} 已预留配送。发货时在「待处理」里标记，或写「发货 ${c}」加快递公司或查询链接。` },
     retirada: { es: `✅ ${c} retirada por el cliente (${pesos(a.precio)}). Venta cerrada.`, zh: `✅ ${c} 客人已取货（${pesos(a.precio)}）。交易完成。` },
-    salio_envio: { es: `🛵 ${c} en camino${nota ? ` (${nota})` : ""}. Cuando llegue, escaneá el QR o escribí «entregado ${c}».`, zh: `🛵 ${c} 配送中${nota ? `（${nota}）` : ""}。送达后请扫二维码或写「已送达 ${c}」。` },
+    salio_envio: { es: `🛵 ${c} en camino${nota ? ` (${nota})` : ""}. Cuando llegue, marcala desde «pendientes» o escribí «entregado ${c}».`, zh: `🛵 ${c} 配送中${nota ? `（${nota}）` : ""}。送达后在「待处理」里标记，或写「已送达 ${c}」。` },
     entregada: { es: `✅ ${c} entregada (${pesos(a.precio)}). Venta cerrada.`, zh: `✅ ${c} 已送达（${pesos(a.precio)}）。交易完成。` },
     liberar: { es: `↩️ ${c} liberada: vuelve al stock y al catálogo. ${quedan}`, zh: `↩️ ${c} 已取消预留，重新上架。${quedan}` },
     volvio: { es: `↩️ ${c} volvió a la tienda y al stock. ${quedan}`, zh: `↩️ ${c} 已退回店里，重新上架。${quedan}` },
@@ -538,4 +624,228 @@ async function ejecutar(repo: RepoPrendas, l: Idioma, a: Articulo, p: Paso, o: {
     ? (l === "zh" ? `\n如有错误请写「撤销 ${c}」。` : `\nSi fue un error: «deshacer ${c}».`)
     : "";
   return { respuesta: txt[p][l] + deshacer, paso: null, datos: {} };
+}
+
+// ---------------------------------------------------------------------------
+// Modo «etiquetas propias»: la tienda no cambia nada, solo saca fotos
+// ---------------------------------------------------------------------------
+
+type Tipo = "alta" | "venta";
+const RECIENTE_MS = 30 * 60 * 1000; // la última acción queda por defecto durante 30 minutos
+
+/** Lo que se conserva de la sesión entre pasos (la última acción) */
+function conservar(datos: Record<string, unknown>): Record<string, unknown> {
+  return datos.ultima ? { ultima: datos.ultima } : {};
+}
+const marca = (tipo: Tipo) => ({ ultima: { tipo, at: Date.now() } });
+
+function tipoPorDefecto(datos: Record<string, unknown>): Tipo {
+  const u = datos.ultima as { tipo?: Tipo; at?: number } | undefined;
+  return u?.tipo && u.at && Date.now() - u.at < RECIENTE_MS ? u.tipo : "alta";
+}
+
+/** Un precio escrito solo («10200», «$10.200», «10.200»), no un peso ni un código */
+export function precioSuelto(t: string): number | null {
+  const s = aAscii(t).trim();
+  if (!/^\$?\s*\d[\d.,]*$/.test(s)) return null;
+  const limpio = s.replace(/[$\s]/g, "").replace(/,\d{1,2}$/, "");
+  const n = Number(limpio.replace(/[.,]/g, ""));
+  return Number.isFinite(n) && n >= 100 ? n : null;
+}
+
+/** Parecido entre dos descripciones cortas (palabras en común / total) */
+export function parecido(a?: string | null, b?: string | null): number {
+  const pal = (x?: string | null) =>
+    new Set((x ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .split(/[^a-z一-鿿]+/).flatMap((w) => /[一-鿿]/.test(w) ? [...w] : [w])
+      .filter((w) => w.length > 2 || /[一-鿿]/.test(w)));
+  const A = pal(a), B = pal(b);
+  if (!A.size || !B.size) return 0;
+  let comun = 0;
+  for (const w of A) if (B.has(w)) comun++;
+  return comun / Math.min(A.size, B.size); // «campera negra» ≈ «campera negra con capucha»
+}
+
+const pesoDesde = (precio: number, precioKg?: number | null) =>
+  precioKg ? Math.round((precio / precioKg) * 1000) / 1000 : null;
+
+interface Ctx {
+  foto?: string;
+  textoCrudo: string;
+  it: Interpretado;
+  paso: string | null;
+  datos: Record<string, unknown>;
+}
+
+const POST: Record<Tipo, { es: string; zh: string }[]> = {
+  alta: [{ es: "Era una venta", zh: "其实是卖出" }, { es: "Borrar", zh: "删除" }],
+  venta: [{ es: "Era retiro", zh: "到店取货" }, { es: "Era envío", zh: "配送" }, { es: "Era una entrada", zh: "其实是入库" }],
+};
+const botonesPost = (tipo: Tipo, l: Idioma) => POST[tipo].map((b, i) => ({ id: String(i + 1), titulo: `${i + 1} ${b[l]}` }));
+
+async function manejarPropias(repo: RepoPrendas, l: Idioma, cfg: ConfigPrendas, c: Ctx): Promise<SalidaModulo | null> {
+  const { foto, textoCrudo, it, paso, datos } = c;
+  const digito = textoCrudo.trim().match(/^([1-3])$/)?.[1];
+  const precioTexto = precioSuelto(textoCrudo);
+  const texto = (k: string) => typeof datos[k] === "string" ? datos[k] as string : null;
+
+  if (!foto) {
+    // Botones o corrección después de una entrada o una venta
+    if (paso === "foto_post" && texto("codigo") && (digito || precioTexto)) {
+      const a = await repo.buscar([texto("codigo")!]);
+      if (!a) return null;
+      const tipo = datos.tipo as Tipo;
+      if (precioTexto) {
+        if (tipo === "alta") {
+          const peso = pesoDesde(precioTexto, cfg.precio_kg);
+          await repo.corregirPrecio(a, precioTexto, peso);
+          return {
+            respuesta: (l === "zh" ? "✏️ 已更正：" : "✏️ Corregido: ") + lineaPrenda({ ...a, precio: precioTexto, peso_kg: peso }, l),
+            botones: botonesPost("alta", l), paso: "foto_post", datos,
+          };
+        }
+        // Venta con precio mal leído: vuelve al stock y buscamos con el precio correcto
+        await repo.cambiarEstado(a, "en_stock", { entrega: null });
+        return await identificar(repo, l, precioTexto, { es: texto("es"), zh: texto("zh") }, texto("foto") ?? undefined);
+      }
+      const i = Number(digito) - 1;
+      if (tipo === "alta") {
+        if (i === 0) { // era una venta: se borra la entrada y se busca la prenda vendida
+          await repo.eliminar(a);
+          return await identificar(repo, l, a.precio ?? 0, { es: a.descripcion ?? null, zh: a.descripcion_zh ?? null }, texto("foto") ?? undefined);
+        }
+        if (i === 1) {
+          await repo.eliminar(a);
+          return { respuesta: l === "zh" ? "🗑️ 已删除。" : "🗑️ Borrada.", paso: null, datos: conservar(datos) };
+        }
+      } else {
+        if (i === 0 || i === 1) {
+          await repo.cambiarEstado(a, "reservado", { entrega: i === 0 ? "retiro" : "envio" });
+          const r = i === 0
+            ? { es: `⏸️ ${lineaPrenda(a, l)}\nQueda reservada para retiro en tienda. Cuando la retiren, marcala desde «pendientes».`, zh: `⏸️ ${lineaPrenda(a, l)}\n已预留到店取货。客人取货时，在「待处理」里标记。` }
+            : { es: `⏸️ ${lineaPrenda(a, l)}\nQueda reservada para envío. Cuando salga, marcala desde «pendientes» (podés sumar la empresa o el link de seguimiento).`, zh: `⏸️ ${lineaPrenda(a, l)}\n已预留配送。发货时在「待处理」里标记（可以附上快递公司或查询链接）。` };
+          return { respuesta: r[l], paso: null, datos: conservar(datos) };
+        }
+        if (i === 2) { // era una entrada: vuelve al stock y se da de alta la prenda nueva
+          await repo.cambiarEstado(a, "en_stock", { entrega: null });
+          return await altaPropia(repo, l, cfg, a.precio ?? 0, { es: texto("es"), zh: texto("zh") }, texto("foto") ?? undefined);
+        }
+      }
+      return null;
+    }
+
+    // Precio que pedimos porque no se pudo leer
+    if ((paso === "foto_precio" || paso === "foto_precio_venta") && precioTexto) {
+      const lect = { es: texto("es"), zh: texto("zh") };
+      return paso === "foto_precio"
+        ? await altaPropia(repo, l, cfg, precioTexto, lect, texto("foto") ?? undefined)
+        : await identificar(repo, l, precioTexto, lect, texto("foto") ?? undefined);
+    }
+
+    // Elección entre varias prendas con el mismo precio
+    if (paso === "foto_elegir" && digito && Array.isArray(datos.codigos)) {
+      const cod = (datos.codigos as string[])[Number(digito) - 1];
+      const a = cod ? await repo.buscar([cod]) : null;
+      if (a && a.estado === "en_stock") return await vender(repo, l, a, texto("foto") ?? undefined, { es: texto("es"), zh: texto("zh") });
+    }
+    return null;
+  }
+
+  // Una foto: entrada o venta
+  if (it.codigos.length) return null; // trae un código: lo resuelve el flujo general
+  const tipo: Tipo = it.accion === "venta" ? "venta" : it.accion === "alta" ? "alta" : tipoPorDefecto(datos);
+  const lectura = repo.leerEtiquetaPrenda ? await repo.leerEtiquetaPrenda(foto).catch(() => null) : null;
+  const precioPie = (textoCrudo.match(/\$?\s*\d[\d.,]{2,}/g) ?? []).map(precioSuelto).find((n) => n) ?? null;
+  const precio = precioPie ?? lectura?.precio ?? null;
+  const lect = { es: lectura?.es ?? null, zh: lectura?.zh ?? null };
+
+  if (!precio) {
+    const q = tipo === "alta"
+      ? { es: "📸 No pude leer el precio de la etiqueta. ¿Cuánto dice? (solo el número)", zh: "📸 看不清价签上的价格。请问是多少？（只发数字）" }
+      : { es: "📸 No pude leer el precio de la etiqueta. ¿Cuánto dice? Así busco cuál se vendió.", zh: "📸 看不清价签上的价格。请问是多少？我来查找卖出的是哪一件。" };
+    return {
+      respuesta: q[l],
+      paso: tipo === "alta" ? "foto_precio" : "foto_precio_venta",
+      datos: { ...marca(tipo), foto, es: lect.es, zh: lect.zh },
+    };
+  }
+  return tipo === "alta"
+    ? await altaPropia(repo, l, cfg, precio, lect, foto)
+    : await identificar(repo, l, precio, lect, foto);
+}
+
+function lineaPrenda(a: Pick<Articulo, "precio" | "peso_kg" | "descripcion" | "descripcion_zh">, l: Idioma) {
+  const d = (l === "zh" ? a.descripcion_zh ?? a.descripcion : a.descripcion ?? a.descripcion_zh) ??
+    (l === "zh" ? "衣服" : "prenda");
+  return `${d} · ${pesos(a.precio)}` + (a.peso_kg != null ? ` · ≈${kilos(a.peso_kg, l)}` : "");
+}
+
+async function altaPropia(
+  repo: RepoPrendas, l: Idioma, cfg: ConfigPrendas, precio: number, lect: Omit<Lectura, "precio">, foto?: string,
+): Promise<SalidaModulo> {
+  const peso = pesoDesde(precio, cfg.precio_kg);
+  const a = await repo.crear({
+    precio_manual: precio, peso_kg: peso, precio_kg: cfg.precio_kg ?? null,
+    descripcion: lect.es, descripcion_zh: lect.zh, fotoPath: foto,
+  });
+  const r = await repo.resumen();
+  const respuesta = (l === "zh"
+    ? `📥 入库：${lineaPrenda({ ...a, precio, peso_kg: peso, descripcion: lect.es, descripcion_zh: lect.zh }, l)}\n库存 ${r.en_stock} 件。价格不对的话，直接回复正确的数字。`
+    : `📥 Entrada: ${lineaPrenda({ ...a, precio, peso_kg: peso, descripcion: lect.es, descripcion_zh: lect.zh }, l)}\nEn stock: ${r.en_stock}. Si el precio está mal, respondé con el correcto.`) +
+    await avisoUso(repo, l);
+  return {
+    respuesta,
+    botones: botonesPost("alta", l),
+    paso: "foto_post",
+    datos: { ...marca("alta"), codigo: a.codigo, tipo: "alta", foto, es: lect.es, zh: lect.zh },
+  };
+}
+
+async function identificar(
+  repo: RepoPrendas, l: Idioma, precio: number, lect: Omit<Lectura, "precio">, foto?: string,
+): Promise<SalidaModulo> {
+  const cands = await repo.candidatos(precio);
+  if (!cands.length) {
+    return {
+      respuesta: l === "zh"
+        ? `🔎 库存里没有 ${pesos(precio)} 的衣服。如果价格读错了，请回复正确的数字。`
+        : `🔎 No encuentro prendas en stock a ${pesos(precio)}. Si leí mal el precio, respondé con el correcto.`,
+      paso: "foto_precio_venta",
+      datos: { ...marca("venta"), foto, es: lect.es, zh: lect.zh },
+    };
+  }
+  if (cands.length === 1) return await vender(repo, l, cands[0], foto, lect);
+
+  // Varias con el mismo precio: la más parecida, si se distingue claramente
+  const puntaje = cands.map((a) => ({
+    a, p: Math.max(parecido(lect.es, a.descripcion), parecido(lect.zh, a.descripcion_zh)),
+  })).sort((x, y) => y.p - x.p);
+  if (puntaje[0].p >= 0.5 && puntaje[0].p - puntaje[1].p >= 0.3) return await vender(repo, l, puntaje[0].a, foto, lect);
+
+  const top = puntaje.slice(0, 3).map((x) => x.a);
+  const nombre = (a: Articulo) => (l === "zh" ? a.descripcion_zh ?? a.descripcion : a.descripcion ?? a.descripcion_zh) ?? a.codigo;
+  const lineas = top.map((a, i) => `${i + 1} · ${nombre(a)} (${a.codigo})`).join("\n");
+  return {
+    respuesta: l === "zh"
+      ? `🔎 有 ${cands.length} 件 ${pesos(precio)} 的衣服。卖出的是哪一件？\n${lineas}`
+      : `🔎 Hay ${cands.length} prendas a ${pesos(precio)}. ¿Cuál se vendió?\n${lineas}`,
+    botones: top.map((a, i) => ({ id: String(i + 1), titulo: `${i + 1} ${nombre(a)}`.slice(0, 20) })),
+    paso: "foto_elegir",
+    datos: { ...marca("venta"), codigos: top.map((a) => a.codigo), foto, es: lect.es, zh: lect.zh },
+  };
+}
+
+async function vender(
+  repo: RepoPrendas, l: Idioma, a: Articulo, foto?: string, lect: Omit<Lectura, "precio"> = { es: null, zh: null },
+): Promise<SalidaModulo> {
+  await repo.cambiarEstado(a, "vendido", { entrega: "local", foto });
+  const r = await repo.resumen();
+  return {
+    respuesta: l === "zh"
+      ? `✅ 卖出：${lineaPrenda(a, l)}\n库存还有 ${r.en_stock} 件。`
+      : `✅ Venta: ${lineaPrenda(a, l)}\nQuedan ${r.en_stock} en stock.`,
+    botones: botonesPost("venta", l),
+    paso: "foto_post",
+    datos: { ...marca("venta"), codigo: a.codigo, tipo: "venta", foto, es: lect.es, zh: lect.zh },
+  };
 }

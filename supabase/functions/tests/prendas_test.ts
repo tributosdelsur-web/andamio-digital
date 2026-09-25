@@ -1,32 +1,41 @@
 // deno test --allow-env supabase/functions/tests/
 import assert from "node:assert/strict";
 import {
-  type Articulo, type EstadoArticulo, type Evento, interpretar, manejarPrendas, numero, peso,
-  type RepoPrendas, type Tramo,
+  type Articulo, type EstadoArticulo, type Evento, interpretar, manejarPrendas, numero, parecido, peso,
+  precioSuelto, type RepoPrendas,
 } from "../_shared/prendas.ts";
+import { parsearLectura, precioLeido } from "../_shared/ia.ts";
 import type { EntradaModulo, SalidaModulo } from "../_shared/modulos.ts";
 import { contenidoQr, detalleEtiqueta, etiquetaPng } from "../_shared/etiqueta_png.ts";
 
-const TRAMOS: Tramo[] = [
-  { orden: 1, nombre_es: "Chico", nombre_zh: "小", hasta: 300, cuota_usd: 37 },
-  { orden: 2, nombre_es: "Mediano", nombre_zh: "中", hasta: 1000, cuota_usd: 65 },
-  { orden: 3, nombre_es: "Grande", nombre_zh: "大", hasta: null, cuota_usd: 95 },
-];
+const PLAN = { base: 37, incluidas: 300, por_prenda: 0.4, techo: null as number | null };
 
-function repoMemoria(precioKg: number | null = 12000, leido: string | null = null, altasPrevias = 0) {
+type Lect = { precio: number | null; es: string | null; zh: string | null };
+function repoMemoria(
+  precioKg: number | null = 12000, leido: string | null = null, altasPrevias = 0,
+  o: { etiquetas?: "qr" | "propias"; lecturas?: Lect[] } = {},
+) {
+  const etiquetas = o.etiquetas ?? "qr";
+  const lecturas = [...(o.lecturas ?? [])];
   const arts: (Articulo & { foto?: string; fotoVenta?: string })[] = [];
   const eventos: (Evento & { id: string })[] = [];
   let n = 0;
-  const codigos = ["K7M3Q", "P4XR9", "ZZ22A", "HH33B"];
+  const codigos = ["K7M3Q", "P4XR9", "ZZ22A", "HH33B", "JJ44C", "MM55D", "NN66E"];
+  let creadas = 0;
   const r: RepoPrendas & { arts: typeof arts; precio: number | null } = {
     arts, precio: precioKg,
-    async config() { return { precio_kg: r.precio, slug: "tienda-flores", catalogo_publico: true }; },
+    async config() { return { precio_kg: r.precio, slug: "tienda-flores", catalogo_publico: true, etiquetas }; },
     async guardarPrecioKg(p) { r.precio = p; },
     async buscar(cs) { for (const c of cs) { const a = arts.find((x) => x.codigo === c); if (a) return a; } return null; },
-    async crear({ peso_kg, precio_kg, fotoPath }) {
-      const a = { id: "id" + n, codigo: codigos[n++], estado: "en_stock" as EstadoArticulo, entrega: null, envio_nota: null, peso_kg, precio: Math.round(peso_kg * precio_kg * 100) / 100, foto: fotoPath };
+    async crear({ peso_kg, precio_kg, fotoPath, precio_manual, descripcion, descripcion_zh }) {
+      creadas++;
+      const precio = precio_manual ?? Math.round((peso_kg ?? 0) * (precio_kg ?? 0) * 100) / 100;
+      const a = { id: "id" + n, codigo: codigos[n++], estado: "en_stock" as EstadoArticulo, entrega: null, envio_nota: null, peso_kg, precio, descripcion, descripcion_zh, foto: fotoPath };
       arts.push(a); eventos.push({ id: a.id, evento: "alta", created_at: new Date().toISOString() }); return a;
     },
+    async corregirPrecio(a0, precio, peso) { const a = arts.find((x) => x.id === a0.id)!; a.precio = precio; a.peso_kg = peso; },
+    async eliminar(a0) { const i = arts.findIndex((x) => x.id === a0.id); arts.splice(i, 1); creadas--; },
+    async candidatos(precio) { return arts.filter((a) => a.estado === "en_stock" && a.precio === precio); },
     async cambiarEstado(a0, estado, o) {
       const a = arts.find((x) => x.id === a0.id)!;
       a.estado = estado; a.entrega = estado === "en_stock" ? null : o.entrega ?? null;
@@ -38,12 +47,14 @@ function repoMemoria(precioKg: number | null = 12000, leido: string | null = nul
     async pendientes() { return arts.filter((a) => a.estado === "reservado" || a.estado === "en_camino"); },
     async historial(a) { return eventos.filter((e) => e.id === a.id); },
     async uso() {
-      const altas = altasPrevias + arts.length;
-      const tramo = TRAMOS.find((t) => t.hasta === null || t.hasta >= altas)!;
-      return { altas, tramo, tramos: TRAMOS };
+      const altas = altasPrevias + creadas;
+      const extra = Math.max(altas - PLAN.incluidas, 0);
+      const cuota = Math.round(Math.min(PLAN.base + extra * PLAN.por_prenda, PLAN.techo ?? Infinity) * 100) / 100;
+      return { altas, incluidas: PLAN.incluidas, extra, base: PLAN.base, por_prenda: PLAN.por_prenda, techo: PLAN.techo, cuota };
     },
     async etiqueta(a) { return `https://x.test/etiquetas/${a.codigo}.png`; },
     async leerCodigoEnFoto() { return leido; },
+    async leerEtiquetaPrenda() { return lecturas.shift() ?? null; },
     urlCatalogo: (s) => "https://x.test/catalogo.html?c=" + s,
   };
   return r;
@@ -62,6 +73,7 @@ async function enviar(repo: RepoPrendas, o: { texto?: string; foto?: string; idi
 }
 const txt = async (repo: RepoPrendas, o: { texto?: string; foto?: string; idioma?: "es" | "zh" }) => (await enviar(repo, o)).respuesta;
 const nuevo = (...a: Parameters<typeof repoMemoria>) => { sesion = { paso: null, datos: {} }; return repoMemoria(...a); };
+const L = (precio: number | null, es: string | null, zh: string | null = null): Lect => ({ precio, es, zh });
 
 Deno.test("peso: formatos en español y chino", () => {
   assert.equal(peso("0,85"), 0.85);
@@ -196,12 +208,13 @@ Deno.test("en el menú, un peso es un alta nueva y no una opción", async () => 
   assert.equal(r.arts[0].estado, "en_stock"); assert.equal(r.arts.length, 2);
 });
 
-Deno.test("tramos: uso del mes y aviso al pasar de tramo", async () => {
+Deno.test("cobro: 37 con 300 incluidas y 0,40 por prenda extra", async () => {
   const r = nuevo(12000, null, 299);
-  assert.doesNotMatch(await txt(r, { texto: "0,85" }), /tramo/); // alta 300
-  assert.match(await txt(r, { texto: "0,5" }), /pasás al tramo Mediano \(USD 65\/mes\)/); // alta 301
+  assert.doesNotMatch(await txt(r, { texto: "0,85" }), /incluidas/); // alta 300
+  assert.match(await txt(r, { texto: "0,5" }), /Pasaste las 300 prendas incluidas del mes: desde ahora cada una suma USD 0,40/); // 301
+  await enviar(r, { texto: "0,5" }); // 302
   const u = await txt(r, { texto: "uso" });
-  assert.match(u, /301 prendas/); assert.match(u, /Tramo Mediano \(hasta 1\.000\) · USD 65\/mes/); assert.match(u, /700 altas más/);
+  assert.match(u, /302 prendas/); assert.match(u, /Cuota USD 37 con 300 incluidas/); assert.match(u, /\+ 2 extra × USD 0,40/); assert.match(u, /Total del mes: \*USD 37,80\*/);
 });
 
 Deno.test("en chino", async () => {
@@ -237,4 +250,133 @@ Deno.test("el webhook trae el número visible del bot (para el QR)", async () =>
     messages: [{ id: "wamid.1", from: "5491100000000", type: "text", text: { body: "K7M3Q" }, timestamp: "1" }],
   } }] }] });
   assert.equal(mensajes[0].numeroBot, "5491155550000");
+});
+
+// ---------------------------------------------------------------------------
+// Modo «etiquetas propias» (por defecto): solo fotos
+// ---------------------------------------------------------------------------
+
+Deno.test("lectura de la IA: JSON y precios argentinos", () => {
+  assert.equal(precioLeido("10.200"), 10200);
+  assert.equal(precioLeido("$10200"), 10200);
+  assert.equal(precioLeido("10.200,00"), 10200);
+  assert.equal(precioLeido(8500), 8500);
+  assert.equal(precioLeido(null), null);
+  assert.deepEqual(parsearLectura('Sure! {"precio": "10.200", "es": "campera negra", "zh": "黑色夹克"}'), { precio: 10200, es: "campera negra", zh: "黑色夹克" });
+  assert.deepEqual(parsearLectura('{"precio": null, "es": "buzo gris", "zh": null}'), { precio: null, es: "buzo gris", zh: null });
+  assert.equal(parsearLectura("no puedo"), null);
+  assert.equal(precioSuelto("10200"), 10200);
+  assert.equal(precioSuelto("$ 10.200"), 10200);
+  assert.equal(precioSuelto("0,85"), null);
+  assert.equal(precioSuelto("K7M3Q"), null);
+  assert.ok(parecido("campera negra", "Campera negra con capucha") > 0.5);
+  assert.equal(parecido("campera negra", "buzo gris"), 0);
+});
+
+Deno.test("propias: la foto de entrada lee precio, describe y calcula el peso", async () => {
+  const r = nuevo(12000, null, 0, { etiquetas: "propias", lecturas: [L(10200, "campera negra", "黑色夹克")] });
+  const s = await enviar(r, { foto: "c1/a.jpg" });
+  assert.match(s.respuesta, /Entrada: campera negra · \$10\.200 · ≈0,85 kg/);
+  assert.match(s.respuesta, /Si el precio está mal/);
+  assert.deepEqual(s.botones?.map((b) => b.titulo), ["1 Era una venta", "2 Borrar"]);
+  assert.equal(r.arts[0].precio, 10200); assert.equal(r.arts[0].peso_kg, 0.85); assert.equal(r.arts[0].foto, "c1/a.jpg");
+  assert.equal(s.imagen, undefined); // no hay etiqueta nuestra
+});
+
+Deno.test("propias: corregir el precio respondiendo con el número", async () => {
+  const r = nuevo(12000, null, 0, { etiquetas: "propias", lecturas: [L(10800, "jean azul")] });
+  await enviar(r, { foto: "c1/a.jpg" });
+  const t = await txt(r, { texto: "10200" });
+  assert.match(t, /Corregido: jean azul · \$10\.200 · ≈0,85 kg/);
+  assert.equal(r.arts[0].precio, 10200);
+});
+
+Deno.test("propias: si no lee el precio, lo pregunta", async () => {
+  const r = nuevo(12000, null, 0, { etiquetas: "propias", lecturas: [L(null, "buzo gris")] });
+  assert.match(await txt(r, { foto: "c1/a.jpg" }), /No pude leer el precio/);
+  assert.match(await txt(r, { texto: "$ 6.000" }), /Entrada: buzo gris · \$6\.000 · ≈0,5 kg/);
+});
+
+Deno.test("propias: sin IA, el precio en el pie de foto alcanza", async () => {
+  const r = nuevo(12000, null, 0, { etiquetas: "propias" });
+  assert.match(await txt(r, { foto: "c1/a.jpg", texto: "9600" }), /Entrada: prenda · \$9\.600 · ≈0,8 kg/);
+});
+
+Deno.test("propias: venta con una sola prenda a ese precio", async () => {
+  const r = nuevo(12000, null, 0, { etiquetas: "propias", lecturas: [L(10200, "campera negra"), L(6000, "buzo gris"), L(10200, "campera negra")] });
+  await enviar(r, { foto: "c1/a.jpg" }); await enviar(r, { foto: "c1/b.jpg" });
+  const s = await enviar(r, { foto: "c1/v.jpg", texto: "vendí" });
+  assert.match(s.respuesta, /Venta: campera negra · \$10\.200/); assert.match(s.respuesta, /Quedan 1/);
+  assert.deepEqual(s.botones?.map((b) => b.titulo), ["1 Era retiro", "2 Era envío", "3 Era una entrada"]);
+  assert.equal(r.arts[0].estado, "vendido"); assert.equal(r.arts[0].fotoVenta, "c1/v.jpg");
+});
+
+Deno.test("propias: la última acción queda por defecto (tanda de ventas)", async () => {
+  const r = nuevo(12000, null, 0, { etiquetas: "propias", lecturas: [L(5000, "remera blanca"), L(7000, "short jean"), L(5000, "remera blanca"), L(7000, "short jean")] });
+  await enviar(r, { foto: "a" }); await enviar(r, { foto: "b" });
+  assert.match(await txt(r, { foto: "v1", texto: "vendí" }), /Venta: remera blanca/);
+  assert.match(await txt(r, { foto: "v2" }), /Venta: short jean/); // sin decir nada, sigue en ventas
+  assert.equal(r.arts.filter((a) => a.estado === "vendido").length, 2);
+});
+
+Deno.test("propias: varias al mismo precio → la más parecida, o botones si hay duda", async () => {
+  const r = nuevo(12000, null, 0, {
+    etiquetas: "propias",
+    lecturas: [L(8000, "campera negra"), L(8000, "buzo gris"), L(8000, "jean azul"), L(8000, "buzo gris"), L(8000, "vestido")],
+  });
+  await enviar(r, { foto: "a" }); await enviar(r, { foto: "b" }); await enviar(r, { foto: "c" });
+  const s1 = await enviar(r, { foto: "v1", texto: "vendí" });
+  assert.match(s1.respuesta, /Venta: buzo gris/); // se distingue claramente
+  const s2 = await enviar(r, { foto: "v2" });
+  assert.match(s2.respuesta, /Hay 2 prendas a \$8\.000/);
+  assert.deepEqual(s2.botones?.map((b) => b.titulo), ["1 campera negra", "2 jean azul"]);
+  assert.match(await txt(r, { texto: "2" }), /Venta: jean azul/);
+  assert.equal(r.arts.find((a) => a.descripcion === "jean azul")!.estado, "vendido");
+});
+
+Deno.test("propias: venta que era entrada, y entrada que era venta", async () => {
+  const r = nuevo(12000, null, 0, { etiquetas: "propias", lecturas: [L(5000, "remera"), L(5000, "remera"), L(5000, "remera")] });
+  await enviar(r, { foto: "a" });
+  await enviar(r, { foto: "v", texto: "vendí" });
+  assert.equal(r.arts[0].estado, "vendido");
+  assert.match(await txt(r, { texto: "3" }), /Entrada: remera/); // era una entrada
+  assert.equal(r.arts[0].estado, "en_stock"); assert.equal(r.arts.length, 2);
+  // Ahora la última acción es «alta»; esta foto era una venta
+  await enviar(r, { foto: "v2" });
+  assert.equal(r.arts.length, 3);
+  // Era una venta: se borra la entrada; quedan dos remeras iguales a $5.000, pregunta cuál
+  assert.match(await txt(r, { texto: "1" }), /Hay 2 prendas a \$5\.000/);
+  assert.match(await txt(r, { texto: "1" }), /Venta: remera/);
+  assert.equal(r.arts.length, 2); // la entrada por error se borró y no cuenta para el cobro
+  assert.equal(r.arts.filter((a) => a.estado === "vendido").length, 1);
+});
+
+Deno.test("propias: venta para retiro y envío, y pendientes numerados", async () => {
+  const r = nuevo(12000, null, 0, { etiquetas: "propias", lecturas: [L(5000, "remera"), L(7000, "short"), L(5000, "remera"), L(7000, "short")] });
+  await enviar(r, { foto: "a" }); await enviar(r, { foto: "b" });
+  await enviar(r, { foto: "v1", texto: "vendí" });
+  assert.match(await txt(r, { texto: "1" }), /reservada para retiro/);
+  await enviar(r, { foto: "v2", texto: "vendí" });
+  assert.match(await txt(r, { texto: "2" }), /reservada para envío/);
+  const p = await enviar(r, { texto: "pendientes" });
+  assert.match(p.respuesta, /1 · \*K7M3Q\* · remera · reservada \(retiro en tienda\)/);
+  assert.match(p.respuesta, /2 · \*P4XR9\* · short · reservada \(envío\)/);
+  const m = await enviar(r, { texto: "2" });
+  assert.deepEqual(m.botones?.map((b) => b.titulo), ["1 Salió el envío", "2 Liberar"]);
+  assert.match(await txt(r, { texto: "1" }), /en camino/);
+  assert.equal(r.arts[1].estado, "en_camino");
+});
+
+Deno.test("propias: no encuentra el precio en stock", async () => {
+  const r = nuevo(12000, null, 0, { etiquetas: "propias", lecturas: [L(9999, "saco")] });
+  assert.match(await txt(r, { foto: "v", texto: "vendí" }), /No encuentro prendas en stock a \$9\.999/);
+});
+
+Deno.test("propias: en chino", async () => {
+  const r = nuevo(12000, null, 0, { etiquetas: "propias", lecturas: [L(10200, "campera negra", "黑色夹克"), L(10200, "campera negra", "黑色夹克")] });
+  const s = await enviar(r, { foto: "a", idioma: "zh" });
+  assert.match(s.respuesta, /入库：黑色夹克 · \$10\.200 · ≈0\.85 公斤/);
+  assert.deepEqual(s.botones?.map((b) => b.titulo), ["1 其实是卖出", "2 删除"]);
+  assert.match(await txt(r, { foto: "v", texto: "卖出", idioma: "zh" }), /卖出：黑色夹克/);
+  assert.match(await txt(r, { texto: "帮助", idioma: "zh" }), /拍照管理库存/);
 });

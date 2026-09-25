@@ -3,13 +3,13 @@
 // y catalogo (público: fotos de prendas y etiquetas con QR).
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import type { Articulo, Evento, RepoPrendas, Tramo } from "./prendas.ts";
+import type { Articulo, Evento, RepoPrendas } from "./prendas.ts";
 import { pesos, RE_CODIGO } from "./prendas.ts";
 import type { SalidaModulo } from "./modulos.ts";
-import { leerCodigoEtiqueta } from "./ia.ts";
+import { leerCodigoEtiqueta, leerEtiquetaPrenda } from "./ia.ts";
 import { contenidoQr, detalleEtiqueta, etiquetaPng } from "./etiqueta_png.ts";
 
-const CAMPOS = "id, codigo, estado, entrega, envio_nota, peso_kg, precio";
+const CAMPOS = "id, codigo, estado, entrega, envio_nota, peso_kg, precio, descripcion, descripcion_zh";
 
 export function repoPrendas(
   db: SupabaseClient,
@@ -39,6 +39,7 @@ export function repoPrendas(
         precio_kg: Number.isFinite(precio) && precio > 0 ? precio : null,
         slug: co?.slug ?? null,
         catalogo_publico: !!co?.catalogo_publico,
+        etiquetas: mod?.config?.etiquetas === "qr" ? "qr" as const : "propias" as const,
       };
     },
 
@@ -63,9 +64,13 @@ export function repoPrendas(
       return null;
     },
 
-    async crear({ peso_kg, precio_kg, fotoPath }) {
+    async crear({ peso_kg, precio_kg, fotoPath, precio_manual, descripcion, descripcion_zh }) {
       const { data, error } = await db.from("articulos")
-        .insert({ comercio_id: comercioId, peso_kg, precio_kg, alta_mensaje_id: o.mensajeId ?? null })
+        .insert({
+          comercio_id: comercioId, peso_kg, precio_kg, precio_manual: precio_manual ?? null,
+          descripcion: descripcion ?? null, descripcion_zh: descripcion_zh ?? null,
+          alta_mensaje_id: o.mensajeId ?? null,
+        })
         .select(CAMPOS).single();
       if (error) throw error;
       const a = data as Articulo;
@@ -103,6 +108,26 @@ export function repoPrendas(
       await evento(a.id, { evento: estado, entrega: entrega ?? null, foto_path: foto ?? null, nota: nota ?? null });
     },
 
+    async corregirPrecio(a, precio, pesoKg) {
+      const { error } = await db.from("articulos").update({ precio_manual: precio, peso_kg: pesoKg })
+        .eq("id", a.id).eq("comercio_id", comercioId);
+      if (error) throw error;
+      await evento(a.id, { evento: "correccion", nota: `${pesos(a.precio)} → ${pesos(precio)}` });
+    },
+
+    async eliminar(a) {
+      const { error } = await db.from("articulos").delete().eq("id", a.id).eq("comercio_id", comercioId);
+      if (error) throw error;
+    },
+
+    async candidatos(precio) {
+      const { data, error } = await db.from("articulos").select(CAMPOS)
+        .eq("comercio_id", comercioId).eq("estado", "en_stock").eq("precio", precio)
+        .order("created_at", { ascending: true }).limit(20);
+      if (error) throw error;
+      return (data ?? []) as Articulo[];
+    },
+
     async resumen() {
       const { data } = await db.from("inventario_prendas")
         .select("en_stock, kg_en_stock, valor_en_stock").eq("comercio_id", comercioId).maybeSingle();
@@ -130,22 +155,19 @@ export function repoPrendas(
     },
 
     async uso() {
-      const [{ data: u, error }, { data: tramos }] = await Promise.all([
-        db.rpc("uso_prendas", { p_comercio: comercioId }).single(),
-        db.from("tramos_prendas").select("orden, nombre_es, nombre_zh, hasta, cuota_usd").order("orden"),
-      ]);
-      if (error || !u) throw error ?? new Error("sin uso");
+      const { data, error } = await db.rpc("uso_prendas", { p_comercio: comercioId }).single();
+      if (error || !data) throw error ?? new Error("sin uso");
       // deno-lint-ignore no-explicit-any
-      const x = u as any;
-      const tramo: Tramo = {
-        orden: x.orden, nombre_es: x.nombre_es, nombre_zh: x.nombre_zh,
-        hasta: x.hasta, cuota_usd: Number(x.cuota_usd),
-      };
+      const x = data as any;
       return {
-        altas: Number(x.altas),
-        tramo,
-        tramos: (tramos ?? []).map((t) => ({ ...t, cuota_usd: Number(t.cuota_usd) })) as Tramo[],
+        altas: Number(x.altas), incluidas: Number(x.incluidas), extra: Number(x.extra),
+        base: Number(x.cuota_base_usd), por_prenda: Number(x.por_prenda_usd),
+        techo: x.techo_usd == null ? null : Number(x.techo_usd), cuota: Number(x.cuota_usd),
       };
+    },
+
+    async leerEtiquetaPrenda(path) {
+      return await leerEtiquetaPrenda(await leerFoto(path));
     },
 
     async etiqueta(a) {
@@ -186,7 +208,7 @@ export async function fichaComprador(db: SupabaseClient, texto: string | undefin
   const cod = t.match(RE_CODIGO);
   if (!cod || t.length > 12) return null; // solo si mandó el código solo (lo que arma el QR)
   const { data: a } = await db.from("articulos")
-    .select("codigo, estado, peso_kg, precio, foto_path, comercios(nombre, telefono_wa, estado)")
+    .select("codigo, estado, peso_kg, precio, descripcion, descripcion_zh, foto_path, comercios(nombre, telefono_wa, estado)")
     .eq("codigo", cod[0]).maybeSingle();
   // deno-lint-ignore no-explicit-any
   const co = (a as any)?.comercios;
@@ -201,11 +223,12 @@ export async function fichaComprador(db: SupabaseClient, texto: string | undefin
   }
   const pedido = encodeURIComponent(`Hola, me interesa la prenda ${a.codigo}`);
   const link = co.telefono_wa ? `https://wa.me/${co.telefono_wa}?text=${pedido}` : "";
-  const kg = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 3 }).format(Number(a.peso_kg));
+  const kg = a.peso_kg == null ? null : new Intl.NumberFormat("es-AR", { maximumFractionDigits: 3 }).format(Number(a.peso_kg));
+  const d = zh ? a.descripcion_zh ?? a.descripcion : a.descripcion ?? a.descripcion_zh;
   const respuesta = zh
-    ? `👕 ${co.nombre} · ${a.codigo}\n${kg} 公斤 · ${pesos(Number(a.precio))}` +
+    ? `👕 ${co.nombre} · ${d ? d + " · " : ""}${a.codigo}\n${kg ? kg + " 公斤 · " : ""}${pesos(Number(a.precio))}` +
       (link ? `\n\n想要这件？请联系店家（可到店取货或配送）：\n${link}` : "")
-    : `👕 ${co.nombre} · ${a.codigo}\n${kg} kg · ${pesos(Number(a.precio))}` +
+    : `👕 ${co.nombre} · ${d ? d + " · " : ""}${a.codigo}\n${kg ? kg + " kg · " : ""}${pesos(Number(a.precio))}` +
       (link ? `\n\n¿La querés? Pedila a la tienda (retiro en tienda o envío):\n${link}` : "");
   const imagen = a.foto_path ? db.storage.from("catalogo").getPublicUrl(a.foto_path).data.publicUrl : undefined;
   return { respuesta, imagen };
